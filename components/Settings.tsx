@@ -473,7 +473,7 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
                   className={inputClasses}
                   value={adminName}
                   onChange={(e) => setAdminName(e.target.value)}
-                  placeholder="مثال: أحمد العمراني"
+                  placeholder="مثال: عمر ايت لوتو"
                 />
               </div>
             </div>

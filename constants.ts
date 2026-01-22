@@ -12,19 +12,19 @@ export const INITIAL_DATA: AppData = {
   subscribers: [
     {
       id: 'sub-1',
-      fullName: 'محمد العلوي',
+      fullName: 'عمر ايت لوتو',
       meterNumber: 'M-1001',
-      address: 'شارع الحسن الثاني، رقم 45',
+      address: 'حي النصر طاطا رقم 45',
       phone: '0600000001',
       status: 'نشط',
-      createdAt: '2023-01-01',
+      createdAt: '2026-01-01',
     }
   ],
   invoices: [],
   tranches: DEFAULT_TRANCHES,
   fixedCharges: 10.0,
   organizationName: 'إدارة المياه المركزية',
-  adminName: 'أحمد المسؤول',
+  adminName: ' المسؤول',
   themeColor: 'blue',
   billingCycle: 'monthly',
   autoNotify: true,
