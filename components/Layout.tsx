@@ -16,6 +16,7 @@ import {
   LogOut
 } from 'lucide-react';
 import { AppData } from '../types';
+import InstallPWA from './InstallPWA';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -96,8 +97,8 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, data
               key={item.id}
               onClick={() => { setActiveTab(item.id); setIsSidebarOpen(false); }}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${activeTab === item.id
-                  ? `${currentBgLightClass} ${currentTextClass} font-semibold shadow-sm`
-                  : 'text-slate-600 hover:bg-slate-50'
+                ? `${currentBgLightClass} ${currentTextClass} font-semibold shadow-sm`
+                : 'text-slate-600 hover:bg-slate-50'
                 }`}
             >
               <item.icon size={20} />
@@ -160,6 +161,8 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, data
           {children}
         </div>
       </main>
+
+      <InstallPWA />
     </div>
   );
 };

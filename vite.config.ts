@@ -25,6 +25,9 @@ export default defineConfig(({ mode }) => {
           short_name: 'WaterFlow',
           description: 'نظام تدبير استهلاك الماء الرقمي',
           theme_color: '#2563eb',
+          background_color: '#f8fafc',
+          display: 'standalone',
+          start_url: '.',
           icons: [
             {
               src: 'pwa-icon.png',
@@ -35,8 +38,18 @@ export default defineConfig(({ mode }) => {
               src: 'pwa-icon.png',
               sizes: '512x512',
               type: 'image/png'
+            },
+            {
+              src: 'pwa-icon.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'any maskable'
             }
           ]
+        },
+        workbox: {
+          navigateFallback: '/index.html',
+          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}']
         }
       })
     ],
