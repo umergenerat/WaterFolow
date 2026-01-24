@@ -19,7 +19,7 @@ export default defineConfig(({ mode }) => {
       react(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+        includeAssets: ['apple-touch-icon.png', 'mask-icon.svg'],
         manifest: {
           name: 'WaterFlow Digital',
           short_name: 'WaterFlow',
