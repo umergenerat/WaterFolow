@@ -29,6 +29,7 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, data, onLogout }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [imgError, setImgError] = useState(false);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -78,8 +79,13 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, data
         <div className="p-6 flex items-center justify-between border-b border-slate-100 flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className={`${currentColorClass} p-2 rounded-xl text-white shadow-lg`}>
-              {data.logoUrl ? (
-                <img src={data.logoUrl} alt="Logo" className="w-6 h-6 object-contain" />
+              {data.logoUrl && !imgError ? (
+                <img
+                  src={data.logoUrl}
+                  alt="Logo"
+                  className="w-6 h-6 object-contain"
+                  onError={() => setImgError(true)}
+                />
               ) : (
                 <Droplets size={24} />
               )}

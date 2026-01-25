@@ -26,7 +26,17 @@ interface SyncResult {
  */
 function cleanInvoiceForAppSheet(invoice: Invoice): AppSheetRow {
   const { trancheDetails, ...rest } = invoice;
-  return rest;
+
+  // Map Status to English for AppSheet
+  const statusMap: Record<string, string> = {
+    'مؤداة': 'Paid',
+    'غير مؤداة': 'Unpaid'
+  };
+
+  return {
+    ...rest,
+    status: statusMap[invoice.status] || invoice.status
+  };
 }
 
 /**
@@ -42,6 +52,15 @@ function cleanSubscriberForAppSheet(subscriber: Subscriber): AppSheetRow {
     // إذا بقي لدينا أرقام، نقوم بتحويلها. وإلا نرسل 0 أو نتركه كما هو حسب الحاجة
     // الملاحظة: AppSheet يتوقع Number، لذا سنرسل رقماً.
     cleaned.meterNumber = numericPart ? parseInt(numericPart, 10) : 0;
+  }
+
+  // Map Status to English for AppSheet
+  const statusMap: Record<string, string> = {
+    'نشط': 'Active',
+    'موقوف': 'Inactive'
+  };
+  if (cleaned.status && statusMap[cleaned.status]) {
+    cleaned.status = statusMap[cleaned.status] as any;
   }
 
   return cleaned;
@@ -179,7 +198,17 @@ export async function pullFromAppSheet(
       };
     }
 
-    const result = await response.json();
+    const textResult = await response.text();
+    let result = { Rows: [] };
+
+    try {
+      if (textResult && textResult.trim().length > 0) {
+        result = JSON.parse(textResult);
+      }
+    } catch (e) {
+      console.warn("⚠️ Response was not valid JSON, but status was OK:", textResult);
+    }
+
     console.log(`✅ Successfully pulled from ${tableName}:`, result);
 
     return {

@@ -59,6 +59,12 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
   // Auth States
   const [authConfig, setAuthConfig] = useState<AuthConfig>(data.authConfig);
   const [showPassword, setShowPassword] = useState(false);
+  const [logoError, setLogoError] = useState(false);
+
+  // Reset error when logo changes
+  React.useEffect(() => {
+    setLogoError(false);
+  }, [logoUrl]);
 
   const [isTesting, setIsTesting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -417,8 +423,13 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
                 <label className="block text-sm font-black text-slate-700">أيقونة النظام</label>
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400 border-2 border-dashed border-slate-200 overflow-hidden">
-                    {logoUrl ? (
-                      <img src={logoUrl} alt="Logo Preview" className="w-full h-full object-cover" />
+                    {logoUrl && !logoError ? (
+                      <img
+                        src={logoUrl}
+                        alt="Logo Preview"
+                        className="w-full h-full object-cover"
+                        onError={() => setLogoError(true)}
+                      />
                     ) : (
                       <Droplets size={24} />
                     )}
