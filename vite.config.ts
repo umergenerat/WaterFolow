@@ -28,7 +28,8 @@ export default defineConfig(({ mode }) => {
           theme_color: '#2563eb',
           background_color: '#f8fafc',
           display: 'standalone',
-          start_url: '.',
+          start_url: '/',
+          scope: '/',
           icons: [
             {
               src: 'pwa-icon.png',
