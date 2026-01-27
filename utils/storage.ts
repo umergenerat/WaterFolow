@@ -2,7 +2,7 @@
 import { AppData } from '../types';
 import { INITIAL_DATA } from '../constants';
 
-const STORAGE_KEY = 'water_mgmt_data_v1';
+const STORAGE_KEY = 'water_mgmt_data_v2';
 
 export const loadData = (): AppData => {
   const stored = localStorage.getItem(STORAGE_KEY);
@@ -29,18 +29,18 @@ export const calculateTranches = (consumption: number, tranches: any[], fixedCha
   for (let i = 0; i < sorted.length; i++) {
     const t = sorted[i];
     const range = t.max !== null ? (t.max - t.min) : Infinity;
-    
+
     if (remaining > 0) {
       const consumedInThisTranche = Math.min(remaining, range);
       const cost = consumedInThisTranche * t.pricePerM3;
-      
+
       details.push({
         trancheLabel: `الشطر ${i + 1} (${t.min} - ${t.max ?? 'ما فوق'})`,
         quantity: consumedInThisTranche,
         pricePerUnit: t.pricePerM3,
         total: cost
       });
-      
+
       totalConsumptionCost += cost;
       remaining -= consumedInThisTranche;
     }
