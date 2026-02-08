@@ -1,7 +1,8 @@
 
 import React, { useState, useRef, useMemo } from 'react';
 import { Subscriber, AppData } from '../types';
-import { Plus, Search, Edit2, Trash2, UserCheck, UserX, Users, Upload, CheckSquare, Square, AlertTriangle, X } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, UserCheck, UserX, Users, Upload, CheckSquare, Square, AlertTriangle, X, Download, FileSpreadsheet } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 interface SubscribersProps {
   data: AppData;
@@ -14,7 +15,7 @@ const Subscribers: React.FC<SubscribersProps> = ({ data, setData }) => {
   const [editingSubId, setEditingSubId] = useState<string | null>(null);
   const [selectedSubIds, setSelectedSubIds] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   // State for the custom Delete Confirmation Modal
   const [deleteConfirmation, setDeleteConfirmation] = useState<{
     isOpen: boolean;
@@ -32,9 +33,9 @@ const Subscribers: React.FC<SubscribersProps> = ({ data, setData }) => {
 
   const filteredSubscribers = useMemo(() => {
     const term = searchTerm.toLowerCase();
-    return data.subscribers.filter(s => 
-      s.fullName.toLowerCase().includes(term) || 
-      s.meterNumber.toLowerCase().includes(term) || 
+    return data.subscribers.filter(s =>
+      s.fullName.toLowerCase().includes(term) ||
+      s.meterNumber.toLowerCase().includes(term) ||
       s.phone.includes(term)
     );
   }, [data.subscribers, searchTerm]);
@@ -58,7 +59,7 @@ const Subscribers: React.FC<SubscribersProps> = ({ data, setData }) => {
       if (editingSubId) {
         return {
           ...prev,
-          subscribers: prev.subscribers.map(s => 
+          subscribers: prev.subscribers.map(s =>
             s.id === editingSubId ? { ...s, ...formData as Subscriber } : s
           )
         };
@@ -83,7 +84,7 @@ const Subscribers: React.FC<SubscribersProps> = ({ data, setData }) => {
     e.stopPropagation();
     setData((prev) => ({
       ...prev,
-      subscribers: prev.subscribers.map(s => 
+      subscribers: prev.subscribers.map(s =>
         s.id === id ? { ...s, status: s.status === 'نشط' ? 'موقوف' : 'نشط' } : s
       )
     }));
@@ -136,9 +137,41 @@ const Subscribers: React.FC<SubscribersProps> = ({ data, setData }) => {
 
   const toggleSelectOne = (id: string, e?: React.MouseEvent) => {
     if (e && e.stopPropagation) e.stopPropagation();
-    setSelectedSubIds(prev => 
+    setSelectedSubIds(prev =>
       prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]
     );
+  };
+
+  const downloadTemplate = () => {
+    const templateData = [
+      {
+        'الاسم الكامل': 'مثال: محمد العلوي',
+        'رقم العداد': 'M-000',
+        'العنوان': 'حي السلام زنقة 5 رقم 12',
+        'الهاتف': '0600000000'
+      }
+    ];
+
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Template");
+    XLSX.writeFile(wb, "نموذج_استيراد_المشتركين.xlsx");
+  };
+
+  const exportToExcel = () => {
+    const dataToExport = filteredSubscribers.map(s => ({
+      'الاسم الكامل': s.fullName,
+      'رقم العداد': s.meterNumber,
+      'العنوان': s.address,
+      'الهاتف': s.phone,
+      'الحالة': s.status,
+      'تاريخ التسجيل': s.createdAt
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(dataToExport);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "المشتركين");
+    XLSX.writeFile(wb, "قائمة_المشتركين.xlsx");
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -152,6 +185,18 @@ const Subscribers: React.FC<SubscribersProps> = ({ data, setData }) => {
         let importedSubscribers: Partial<Subscriber>[] = [];
         if (file.name.endsWith('.json')) {
           importedSubscribers = JSON.parse(content);
+        } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+          const workbook = XLSX.read(content, { type: 'binary' });
+          const sheetName = workbook.SheetNames[0];
+          const sheet = workbook.Sheets[sheetName];
+          const jsonData = XLSX.utils.sheet_to_json(sheet);
+
+          importedSubscribers = jsonData.map((row: any) => ({
+            fullName: row['الاسم الكامل'] || row['fullName'],
+            meterNumber: row['رقم العداد'] || row['meterNumber'],
+            address: row['العنوان'] || row['address'],
+            phone: row['الهاتف'] || row['phone']
+          }));
         } else {
           const lines = content.split('\n');
           importedSubscribers = lines.slice(1).filter(line => line.trim()).map(line => {
@@ -181,7 +226,11 @@ const Subscribers: React.FC<SubscribersProps> = ({ data, setData }) => {
         alert("❌ خطأ في تنسيق الملف.");
       }
     };
-    reader.readAsText(file);
+    if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+      reader.readAsBinaryString(file);
+    } else {
+      reader.readAsText(file);
+    }
   };
 
   const inputClasses = "w-full px-4 py-3 bg-white border border-slate-200 text-slate-900 rounded-xl outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium text-sm lg:text-base";
@@ -194,29 +243,48 @@ const Subscribers: React.FC<SubscribersProps> = ({ data, setData }) => {
           <p className="text-slate-500 text-xs lg:text-sm font-medium">قاعدة بيانات رقمية شاملة للمنخرطين</p>
         </div>
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-          <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv,.json" className="hidden" />
-          <button 
+          <button
+            onClick={downloadTemplate}
+            className="flex-1 sm:flex-none bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all border border-slate-200 font-bold text-sm shadow-sm"
+            title="تحميل نموذج Excel"
+          >
+            <FileSpreadsheet size={18} />
+            <span className="hidden sm:inline">نموذج</span>
+          </button>
+
+          <button
+            onClick={exportToExcel}
+            className="flex-1 sm:flex-none bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all border border-slate-200 font-bold text-sm shadow-sm"
+            title="تصدير إلى Excel"
+          >
+            <Download size={18} />
+            <span className="hidden sm:inline">تصدير</span>
+          </button>
+
+          <div className="w-px h-8 bg-slate-200 mx-1 hidden sm:block"></div>
+
+          <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv,.json,.xlsx,.xls" className="hidden" />
+          <button
             onClick={() => fileInputRef.current?.click()}
             className="flex-1 sm:flex-none bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all border border-slate-200 font-bold text-sm shadow-sm"
           >
             <Upload size={18} />
             استيراد
           </button>
-          
-          <button 
+
+          <button
             onClick={triggerDeleteSelected}
             disabled={selectedSubIds.length === 0}
-            className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all font-bold text-sm shadow-lg ${
-              selectedSubIds.length > 0 
-                ? 'bg-red-600 hover:bg-red-700 text-white shadow-red-200' 
+            className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all font-bold text-sm shadow-lg ${selectedSubIds.length > 0
+                ? 'bg-red-600 hover:bg-red-700 text-white shadow-red-200'
                 : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
-            }`}
+              }`}
           >
             <Trash2 size={18} />
             {selectedSubIds.length > 0 ? `حذف المحددين (${selectedSubIds.length})` : 'حذف جماعي'}
           </button>
 
-          <button 
+          <button
             onClick={openAddModal}
             className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-200 font-bold text-sm"
           >
@@ -230,9 +298,9 @@ const Subscribers: React.FC<SubscribersProps> = ({ data, setData }) => {
         <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center gap-4">
           <div className="relative flex-1">
             <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input 
-              type="text" 
-              placeholder="البحث بالاسم، العداد أو الهاتف..." 
+            <input
+              type="text"
+              placeholder="البحث بالاسم، العداد أو الهاتف..."
               className="w-full pr-11 pl-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-900 rounded-xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all placeholder:text-slate-400 font-medium text-sm"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -249,8 +317,8 @@ const Subscribers: React.FC<SubscribersProps> = ({ data, setData }) => {
               <tr className="bg-slate-50/50 border-b border-slate-200">
                 <th className="px-4 py-4 w-12 text-center">
                   <button onClick={toggleSelectAll} className="text-slate-400 hover:text-blue-600 transition-colors">
-                    {selectedSubIds.length === filteredSubscribers.length && filteredSubscribers.length > 0 
-                      ? <CheckSquare size={20} className="text-blue-600" /> 
+                    {selectedSubIds.length === filteredSubscribers.length && filteredSubscribers.length > 0
+                      ? <CheckSquare size={20} className="text-blue-600" />
                       : <Square size={20} />
                     }
                   </button>
@@ -267,8 +335,8 @@ const Subscribers: React.FC<SubscribersProps> = ({ data, setData }) => {
               {filteredSubscribers.map((subscriber) => {
                 const isSelected = selectedSubIds.includes(subscriber.id);
                 return (
-                  <tr 
-                    key={subscriber.id} 
+                  <tr
+                    key={subscriber.id}
                     onClick={() => toggleSelectOne(subscriber.id)}
                     className={`transition-colors cursor-pointer group ${isSelected ? 'bg-blue-50/40' : 'hover:bg-slate-50/50'}`}
                   >
@@ -282,27 +350,26 @@ const Subscribers: React.FC<SubscribersProps> = ({ data, setData }) => {
                     <td className="px-6 py-4 text-sm font-medium text-slate-600 truncate max-w-[200px]">{subscriber.address}</td>
                     <td className="px-6 py-4 text-sm font-medium text-slate-600">{subscriber.phone}</td>
                     <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold ${
-                        subscriber.status === 'نشط' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-red-50 text-red-700 border border-red-100'
-                      }`}>
+                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold ${subscriber.status === 'نشط' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-red-50 text-red-700 border border-red-100'
+                        }`}>
                         {subscriber.status}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-left">
                       <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button 
+                        <button
                           onClick={(e) => openEditModal(subscriber, e)}
                           className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-all"
                         >
                           <Edit2 size={16} />
                         </button>
-                        <button 
+                        <button
                           onClick={(e) => toggleStatus(subscriber.id, e)}
                           className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
                         >
                           {subscriber.status === 'نشط' ? <UserX size={16} /> : <UserCheck size={16} />}
                         </button>
-                        <button 
+                        <button
                           onClick={(e) => triggerDeleteSub(subscriber.id, e)}
                           className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
                         >
@@ -334,20 +401,20 @@ const Subscribers: React.FC<SubscribersProps> = ({ data, setData }) => {
               </div>
               <h3 className="text-2xl font-black text-slate-800 mb-2">تأكيد الحذف النهائي</h3>
               <p className="text-slate-500 font-medium leading-relaxed">
-                {deleteConfirmation.type === 'single' 
+                {deleteConfirmation.type === 'single'
                   ? 'هل أنت متأكد من رغبتك في حذف هذا المشترك؟ سيتم مسح كافة الفواتير والسجلات المرتبطة به نهائياً.'
                   : `هل أنت متأكد من حذف ${selectedSubIds.length} مشتركين دفعة واحدة؟ لا يمكن التراجع عن هذا الإجراء.`
                 }
               </p>
             </div>
             <div className="p-6 bg-white flex gap-3">
-              <button 
+              <button
                 onClick={confirmDelete}
                 className="flex-1 bg-red-600 hover:bg-red-700 text-white py-4 rounded-2xl font-black shadow-lg shadow-red-200 transition-all active:scale-95"
               >
                 نعم، احذف الآن
               </button>
-              <button 
+              <button
                 onClick={() => setDeleteConfirmation({ ...deleteConfirmation, isOpen: false })}
                 className="flex-1 bg-slate-100 text-slate-600 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all"
               >
@@ -372,21 +439,21 @@ const Subscribers: React.FC<SubscribersProps> = ({ data, setData }) => {
               <div className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 mb-1">الاسم الكامل</label>
-                  <input required type="text" placeholder="مثال: أحمد العمراني" className={inputClasses} value={formData.fullName} onChange={(e) => setFormData({...formData, fullName: e.target.value})} />
+                  <input required type="text" placeholder="مثال: أحمد العمراني" className={inputClasses} value={formData.fullName} onChange={(e) => setFormData({ ...formData, fullName: e.target.value })} />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-500 mb-1">رقم العداد</label>
-                    <input required type="text" placeholder="M-000" className={`${inputClasses} font-mono`} value={formData.meterNumber} onChange={(e) => setFormData({...formData, meterNumber: e.target.value})} />
+                    <input required type="text" placeholder="M-000" className={`${inputClasses} font-mono`} value={formData.meterNumber} onChange={(e) => setFormData({ ...formData, meterNumber: e.target.value })} />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 mb-1">الهاتف</label>
-                    <input required type="tel" placeholder="06XXXXXXXX" className={inputClasses} value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} />
+                    <input required type="tel" placeholder="06XXXXXXXX" className={inputClasses} value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
                   </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 mb-1">العنوان الكامل</label>
-                  <textarea required placeholder="أدخل العنوان..." className={`${inputClasses} min-h-[80px]`} value={formData.address} onChange={(e) => setFormData({...formData, address: e.target.value})}></textarea>
+                  <textarea required placeholder="أدخل العنوان..." className={`${inputClasses} min-h-[80px]`} value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })}></textarea>
                 </div>
               </div>
               <div className="flex gap-3 pt-4">
