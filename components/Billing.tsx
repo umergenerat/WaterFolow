@@ -160,7 +160,7 @@ const Billing: React.FC<BillingProps> = ({ data, setData }) => {
       invoices: updatedInvoices
     });
 
-    if (notificationChannel !== 'none') {
+    if (notificationChannel !== 'none' && newInvoice.consumption > 0) {
       handleNotify(newInvoice, notificationChannel, true);
     }
 
