@@ -141,8 +141,8 @@ const Billing: React.FC<BillingProps> = ({ data, setData }) => {
   };
 
   const handleGenerateInvoice = async () => {
-    if (!selectedSub || currentIndex <= previousIndex) {
-      alert('يرجى التأكد من اختيار المشترك وإدخال مؤشر صحيح (أكبر من المؤشر السابق).');
+    if (!selectedSub || currentIndex < previousIndex) {
+      alert('يرجى التأكد من اختيار المشترك وإدخال مؤشر صحيح (أكبر من أو يساوي المؤشر السابق).');
       return;
     }
 
