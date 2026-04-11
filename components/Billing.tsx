@@ -181,6 +181,7 @@ const Billing: React.FC<BillingProps> = ({ data, setData }) => {
         jsonData.forEach((row, index) => {
           const subId = row["المعرف (ID)"];
           let currStr = row["المؤشر الحالي"];
+          let prevStr = row["المؤشر السابق"];
           
           if (!subId || currStr === undefined || currStr === null || currStr === "") {
             skipCount++;
@@ -202,7 +203,14 @@ const Billing: React.FC<BillingProps> = ({ data, setData }) => {
           const lastInvoice = data.invoices
             .filter(i => i.subscriberId === sub.id)
             .sort((a, b) => b.readingDate.localeCompare(a.readingDate))[0];
-          const actualPrev = lastInvoice ? Number(lastInvoice.currentIndex) : 0;
+            
+          let actualPrev = lastInvoice ? Number(lastInvoice.currentIndex) : 0;
+          if (prevStr !== undefined && prevStr !== null && prevStr !== "") {
+            const parsedPrev = Number(prevStr);
+            if (!isNaN(parsedPrev)) {
+              actualPrev = parsedPrev;
+            }
+          }
 
           if (curr < actualPrev) {
             skipCount++;
