@@ -33,8 +33,9 @@ const Billing: React.FC<BillingProps> = ({ data, setData }) => {
       .sort((a, b) => b.readingDate.localeCompare(a.readingDate))[0];
   }, [selectedSubId, data.invoices]);
 
-  const previousIndex = lastInvoice ? lastInvoice.currentIndex : 0;
-  const consumption = currentIndex >= previousIndex ? currentIndex - previousIndex : 0;
+  const previousIndex = lastInvoice ? Number(lastInvoice.currentIndex) : 0;
+  const currentIndexNum = Number(currentIndex);
+  const consumption = currentIndexNum >= previousIndex ? currentIndexNum - previousIndex : 0;
   const calcResults = calculateTranches(consumption, data.tranches, data.fixedCharges);
 
   // مفعول الفاتورة الحالية للمعاينة والطباعة
@@ -141,21 +142,32 @@ const Billing: React.FC<BillingProps> = ({ data, setData }) => {
   };
 
   const handleGenerateInvoice = async () => {
+    // التحقق من اختيار المشترك
     if (!selectedSub) {
       alert('يرجى اختيار مشترك أولاً.');
       return;
     }
-    if (currentIndex < previousIndex) {
-      alert('خطأ: المؤشر الحالي لا يمكن أن يكون أصغر من المؤشر السابق.');
+
+    const prev = Number(previousIndex);
+    const curr = Number(currentIndex);
+
+    // المؤشر الحالي يجب أن يكون أكبر من أو يساوي المؤشر السابق
+    if (isNaN(curr) || curr < prev) {
+      alert('خطأ: المؤشر الحالي (' + curr + ') لا يمكن أن يكون أصغر من المؤشر السابق (' + prev + ').');
       return;
     }
 
     if (!previewInvoice) return;
 
+    const cons = curr - prev; // الاستهلاك = الفرق (قد يكون صفراً)
+
     const newInvoice: Invoice = {
       ...previewInvoice,
       id: `inv-${Date.now()}`,
       invoiceNumber: `INV-${new Date().getFullYear()}-${data.invoices.length + 1001}`,
+      consumption: cons,
+      currentIndex: curr,
+      previousIndex: prev,
     };
 
     const updatedInvoices = [...data.invoices, newInvoice];
@@ -164,11 +176,11 @@ const Billing: React.FC<BillingProps> = ({ data, setData }) => {
       invoices: updatedInvoices
     });
 
-    if (notificationChannel !== 'none' && newInvoice.consumption > 0) {
+    if (notificationChannel !== 'none') {
       handleNotify(newInvoice, notificationChannel, true);
     }
 
-    alert(`✅ تم إصدار الفاتورة رقم ${newInvoice.invoiceNumber} بنجاح.`);
+    alert(`✅ تم إصدار الفاتورة رقم ${newInvoice.invoiceNumber} بنجاح. الاستهلاك: ${cons} م³`);
     handleCancelSelection();
     setView('list');
   };
