@@ -34,7 +34,7 @@ const Billing: React.FC<BillingProps> = ({ data, setData }) => {
   }, [selectedSubId, data.invoices]);
 
   const previousIndex = lastInvoice ? lastInvoice.currentIndex : 0;
-  const consumption = currentIndex > previousIndex ? currentIndex - previousIndex : 0;
+  const consumption = currentIndex >= previousIndex ? currentIndex - previousIndex : 0;
   const calcResults = calculateTranches(consumption, data.tranches, data.fixedCharges);
 
   // مفعول الفاتورة الحالية للمعاينة والطباعة
@@ -141,8 +141,12 @@ const Billing: React.FC<BillingProps> = ({ data, setData }) => {
   };
 
   const handleGenerateInvoice = async () => {
-    if (!selectedSub || currentIndex < previousIndex) {
-      alert('يرجى التأكد من اختيار المشترك وإدخال مؤشر صحيح (أكبر من المؤشر السابق او يساويه).');
+    if (!selectedSub) {
+      alert('يرجى اختيار مشترك أولاً.');
+      return;
+    }
+    if (currentIndex < previousIndex) {
+      alert('خطأ: المؤشر الحالي لا يمكن أن يكون أصغر من المؤشر السابق.');
       return;
     }
 
