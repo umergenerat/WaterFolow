@@ -1,9 +1,10 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import { AppData, Invoice } from '../types';
-import { FilePlus, History, ChevronRight, Calculator, CheckCircle, Share2, Droplets, Printer, Camera, X, RefreshCw, Loader2, Code2, Bell, MessageSquare, MessageCircle, Phone, Check, RotateCcw } from 'lucide-react';
+import { FilePlus, History, ChevronRight, Calculator, CheckCircle, Share2, Droplets, Printer, Camera, X, RefreshCw, Loader2, Code2, Bell, MessageSquare, MessageCircle, Phone, Check, RotateCcw, Download, Upload } from 'lucide-react';
 import { calculateTranches } from '../utils/storage';
 import { generateNotificationMessage, extractMeterReading } from '../services/geminiService';
+import * as XLSX from 'xlsx';
 
 interface BillingProps {
   data: AppData;
@@ -24,6 +25,10 @@ const Billing: React.FC<BillingProps> = ({ data, setData }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  // Excel States
+  const [isExcelProcessing, setIsExcelProcessing] = useState(false);
+  const excelFileInputRef = useRef<HTMLInputElement>(null);
 
   const selectedSub = data.subscribers.find(s => s.id === selectedSubId);
   
@@ -102,6 +107,151 @@ const Billing: React.FC<BillingProps> = ({ data, setData }) => {
       }
     }
     setIsProcessingImage(false);
+  };
+
+  const handleExportExcel = () => {
+    const activeSubscribers = data.subscribers.filter(s => s.status === 'نشط');
+    if (activeSubscribers.length === 0) {
+      alert("لا يوجد مشتركون نشطون للتصدير.");
+      return;
+    }
+
+    const exportData = activeSubscribers.map(sub => {
+      const lastInvoice = data.invoices
+        .filter(i => i.subscriberId === sub.id)
+        .sort((a, b) => b.readingDate.localeCompare(a.readingDate))[0];
+      const previousIndex = lastInvoice ? Number(lastInvoice.currentIndex) : 0;
+
+      return {
+        "المعرف (ID)": sub.id,
+        "الاسم الكامل": sub.fullName,
+        "رقم العداد": sub.meterNumber,
+        "الهاتف": sub.phone,
+        "العنوان": sub.address,
+        "المؤشر السابق": previousIndex,
+        "المؤشر الحالي": "",
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    
+    const colWidths = [
+      { wch: 36 }, // ID
+      { wch: 25 }, // Name
+      { wch: 15 }, // Meter
+      { wch: 15 }, // Phone
+      { wch: 30 }, // Address
+      { wch: 15 }, // Prev
+      { wch: 15 }, // Curr
+    ];
+    worksheet['!cols'] = colWidths;
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "المشتركون");
+
+    const fileName = `فواتير_${data.billingCycle === 'monthly' ? 'شهري' : 'دوري'}_${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
+  };
+
+  const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsExcelProcessing(true);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const result = event.target?.result;
+        const workbook = XLSX.read(result, { type: 'binary' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        
+        const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+
+        let successCount = 0;
+        let skipCount = 0;
+        let generatedInvoices: Invoice[] = [];
+
+        const period = data.billingCycle === 'monthly' 
+          ? new Date().toISOString().slice(0, 7) 
+          : `${new Date().getFullYear()}-Q${Math.floor(new Date().getMonth()/3)+1}`;
+        const dueDate = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const readingDate = new Date().toISOString().split('T')[0];
+
+        jsonData.forEach((row, index) => {
+          const subId = row["المعرف (ID)"];
+          let currStr = row["المؤشر الحالي"];
+          
+          if (!subId || currStr === undefined || currStr === null || currStr === "") {
+            skipCount++;
+            return;
+          }
+
+          const curr = Number(currStr);
+          if (isNaN(curr)) {
+            skipCount++;
+            return;
+          }
+
+          const sub = data.subscribers.find(s => s.id === subId && s.status === 'نشط');
+          if (!sub) {
+            skipCount++;
+            return;
+          }
+
+          const lastInvoice = data.invoices
+            .filter(i => i.subscriberId === sub.id)
+            .sort((a, b) => b.readingDate.localeCompare(a.readingDate))[0];
+          const actualPrev = lastInvoice ? Number(lastInvoice.currentIndex) : 0;
+
+          if (curr < actualPrev) {
+            skipCount++;
+            return;
+          }
+
+          const cons = curr - actualPrev;
+          const calcResults = calculateTranches(cons, data.tranches, data.fixedCharges);
+
+          const newInvoice: Invoice = {
+            id: `inv-${Date.now()}-${index}`,
+            invoiceNumber: `INV-${new Date().getFullYear()}-${data.invoices.length + generatedInvoices.length + 1001}`,
+            subscriberId: sub.id,
+            period,
+            previousIndex: actualPrev,
+            currentIndex: curr,
+            consumption: cons,
+            trancheDetails: calcResults.details,
+            fixedCharges: data.fixedCharges,
+            totalAmount: calcResults.total,
+            dueDate,
+            status: 'غير مؤداة',
+            readingDate
+          };
+
+          generatedInvoices.push(newInvoice);
+          successCount++;
+        });
+
+        if (generatedInvoices.length > 0) {
+          setData(prev => ({
+            ...prev,
+            invoices: [...prev.invoices, ...generatedInvoices]
+          }));
+        }
+
+        alert(`✅ تمت العملية بنجاح.\nتم توليد: ${successCount} فاتورة.\nتم تجاهل: ${skipCount} صفوف (فارغة أو البيانات غير صحيحة).`);
+        if (successCount > 0) setView('list');
+      } catch (error) {
+        console.error(error);
+        alert("حدث خطأ أثناء معالجة ملف الإكسيل. يرجى التأكد من صحة الملف.");
+      } finally {
+        setIsExcelProcessing(false);
+        if (excelFileInputRef.current) {
+          excelFileInputRef.current.value = '';
+        }
+      }
+    };
+    reader.readAsArrayBuffer(file);
   };
 
   const handleNotify = async (invoice: Invoice, channel: 'whatsapp' | 'sms', quiet = false) => {
@@ -303,7 +453,42 @@ const Billing: React.FC<BillingProps> = ({ data, setData }) => {
       </div>
 
       {view === 'create' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 no-print">
+        <div className="space-y-6">
+          {/* إدخال جماعي Excel */}
+          <div className="bg-gradient-to-br from-indigo-50 to-white p-6 lg:p-8 rounded-2xl lg:rounded-3xl border border-indigo-100 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 w-full no-print">
+            <div className="flex-1">
+              <h3 className="font-black text-indigo-900 flex items-center gap-2 text-lg lg:text-xl mb-1">
+                الإدخال الجماعي (Excel)
+              </h3>
+              <p className="text-[10px] lg:text-xs font-bold text-slate-500">تصدير نموذج الإدخال، تعبئة المؤشرات، ثم إعادة استيراد الملف لإصدار الفواتير دفعة واحدة.</p>
+            </div>
+            <div className="flex gap-3 w-full md:w-auto">
+              <button 
+                onClick={handleExportExcel}
+                className="flex-1 md:flex-none px-4 lg:px-6 py-2.5 lg:py-3 bg-white text-indigo-600 border border-indigo-200 rounded-xl font-black text-xs lg:text-sm hover:bg-indigo-50 hover:shadow shadow-sm transition-all flex items-center justify-center gap-2"
+              >
+                <Download size={18} />
+                تصدير النموذج
+              </button>
+              <input 
+                type="file" 
+                accept=".xlsx, .xls" 
+                className="hidden" 
+                ref={excelFileInputRef}
+                onChange={handleImportExcel}
+              />
+              <button 
+                onClick={() => excelFileInputRef.current?.click()}
+                disabled={isExcelProcessing}
+                className="flex-1 md:flex-none px-4 lg:px-6 py-2.5 lg:py-3 bg-indigo-600 text-white rounded-xl font-black text-xs lg:text-sm hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2 disabled:opacity-75 disabled:cursor-wait"
+              >
+                {isExcelProcessing ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />}
+                استيراد الفواتير
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 no-print">
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white p-6 lg:p-8 rounded-2xl lg:rounded-3xl border border-slate-200 shadow-sm space-y-6">
               <h3 className="font-black text-slate-800 border-b border-slate-100 pb-4 text-base lg:text-lg">بيانات القراءة</h3>
@@ -418,6 +603,7 @@ const Billing: React.FC<BillingProps> = ({ data, setData }) => {
               )}
             </div>
           </div>
+        </div>
         </div>
       ) : (
         <div className="bg-white rounded-2xl lg:rounded-3xl border border-slate-200 shadow-sm overflow-hidden no-print">
