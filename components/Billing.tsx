@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import { AppData, Invoice } from '../types';
-import { FilePlus, History, ChevronRight, Calculator, CheckCircle, Share2, Droplets, Printer, Camera, X, RefreshCw, Loader2, Code2, Bell, MessageSquare, MessageCircle, Phone, Check, RotateCcw, Download, Upload } from 'lucide-react';
+import { FilePlus, History, ChevronRight, Calculator, CheckCircle, Share2, Droplets, Printer, Camera, X, RefreshCw, Loader2, Code2, Bell, MessageSquare, MessageCircle, Phone, Check, RotateCcw, Download, Upload, Pencil, Save } from 'lucide-react';
 import { calculateTranches } from '../utils/storage';
 import { generateNotificationMessage, extractMeterReading } from '../services/geminiService';
 import * as XLSX from 'xlsx';
@@ -29,6 +29,10 @@ const Billing: React.FC<BillingProps> = ({ data, setData }) => {
   // Excel States
   const [isExcelProcessing, setIsExcelProcessing] = useState(false);
   const excelFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Edit Invoice States
+  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
+  const [editCurrentIndex, setEditCurrentIndex] = useState<number>(0);
 
   const selectedSub = data.subscribers.find(s => s.id === selectedSubId);
   
@@ -347,6 +351,42 @@ const Billing: React.FC<BillingProps> = ({ data, setData }) => {
     setSelectedInvoices(prev => 
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
     );
+  };
+
+  const handleStartEdit = (inv: Invoice) => {
+    setEditingInvoice(inv);
+    setEditCurrentIndex(Number(inv.currentIndex));
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingInvoice) return;
+
+    const prev = Number(editingInvoice.previousIndex);
+    const curr = Number(editCurrentIndex);
+
+    if (isNaN(curr) || curr < prev) {
+      alert('خطأ: المؤشر الحالي (' + curr + ') لا يمكن أن يكون أصغر من المؤشر السابق (' + prev + ').');
+      return;
+    }
+
+    const cons = curr - prev;
+    const newCalc = calculateTranches(cons, data.tranches, data.fixedCharges);
+
+    const updatedInvoice: Invoice = {
+      ...editingInvoice,
+      currentIndex: curr,
+      consumption: cons,
+      trancheDetails: newCalc.details,
+      totalAmount: newCalc.total,
+    };
+
+    setData({
+      ...data,
+      invoices: data.invoices.map(i => i.id === editingInvoice.id ? updatedInvoice : i)
+    });
+
+    alert(`✅ تم تعديل الفاتورة ${editingInvoice.invoiceNumber} بنجاح. الاستهلاك الجديد: ${cons} م³`);
+    setEditingInvoice(null);
   };
 
   const handlePrint = () => {
@@ -672,6 +712,7 @@ const Billing: React.FC<BillingProps> = ({ data, setData }) => {
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-1.5">
+                          <button onClick={() => handleStartEdit(inv)} title="تعديل الفاتورة" className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg"><Pencil size={16} /></button>
                           <button onClick={() => { setSelectedInvoices([inv.id]); handlePrint(); }} className="p-1.5 text-slate-400 hover:text-slate-900 bg-slate-50 rounded-lg"><Printer size={16} /></button>
                           <button onClick={() => handleNotify(inv, 'whatsapp')} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg"><MessageSquare size={16} /></button>
                           <button onClick={() => handleNotify(inv, 'sms')} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"><MessageCircle size={16} /></button>
@@ -686,6 +727,104 @@ const Billing: React.FC<BillingProps> = ({ data, setData }) => {
           </div>
         </div>
       )}
+
+      {/* Edit Invoice Modal */}
+      {editingInvoice && (() => {
+        const editSub = data.subscribers.find(s => s.id === editingInvoice.subscriberId);
+        const editPrev = Number(editingInvoice.previousIndex);
+        const editCurr = Number(editCurrentIndex);
+        const editCons = editCurr >= editPrev ? editCurr - editPrev : 0;
+        const editCalc = calculateTranches(editCons, data.tranches, data.fixedCharges);
+        return (
+          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xl z-[100] flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-lg rounded-[2rem] shadow-2xl border border-slate-200 overflow-hidden">
+              {/* Header */}
+              <div className="bg-gradient-to-l from-amber-500 to-amber-600 text-white p-6 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <Pencil size={24} />
+                  <div>
+                    <h3 className="font-black text-lg">تعديل الفاتورة</h3>
+                    <p className="text-amber-100 text-xs font-bold">{editingInvoice.invoiceNumber}</p>
+                  </div>
+                </div>
+                <button onClick={() => setEditingInvoice(null)} className="p-2 bg-white/20 rounded-xl hover:bg-white/30 transition-all"><X size={20} /></button>
+              </div>
+
+              <div className="p-6 space-y-5">
+                {/* Subscriber info */}
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">المشترك</p>
+                  <p className="font-black text-slate-800 text-lg">{editSub?.fullName}</p>
+                  <p className="text-xs font-bold text-slate-500">العداد: {editSub?.meterNumber} • الفترة: {editingInvoice.period}</p>
+                </div>
+
+                {/* Previous index (read-only) */}
+                <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                  <span className="text-sm font-black text-slate-500">المؤشر السابق</span>
+                  <span className="font-black text-slate-800 bg-white px-4 py-1.5 rounded-xl border border-slate-200">{editPrev}</span>
+                </div>
+
+                {/* Current index (editable) */}
+                <div>
+                  <label className="block text-xs font-black text-amber-700 uppercase tracking-wider mb-2">المؤشر الحالي (قابل للتعديل)</label>
+                  <input
+                    type="number"
+                    value={editCurrentIndex || ''}
+                    onChange={(e) => setEditCurrentIndex(Number(e.target.value))}
+                    className="w-full px-4 py-3 bg-white border-2 border-amber-300 text-slate-900 rounded-2xl outline-none focus:ring-4 focus:ring-amber-500/10 focus:border-amber-500 transition-all font-black text-2xl text-center font-mono"
+                  />
+                </div>
+
+                {/* Live recalculation preview */}
+                <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 space-y-2">
+                  <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest">المعاينة بعد التعديل</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-white p-3 rounded-xl border border-amber-100 text-center">
+                      <p className="text-[9px] font-black text-slate-400 uppercase">الاستهلاك</p>
+                      <p className="font-black text-lg text-slate-800 font-mono">{editCons} <span className="text-xs font-medium text-slate-400">م³</span></p>
+                    </div>
+                    <div className="bg-white p-3 rounded-xl border border-amber-100 text-center">
+                      <p className="text-[9px] font-black text-slate-400 uppercase">الإجمالي الجديد</p>
+                      <p className="font-black text-lg text-blue-600 font-mono">{editCalc.total.toFixed(2)} <span className="text-xs font-medium text-slate-400">د</span></p>
+                    </div>
+                  </div>
+                  {editCalc.details.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {editCalc.details.map((d, i) => (
+                        <div key={i} className="flex justify-between text-xs font-bold text-slate-600 bg-white px-3 py-1.5 rounded-lg">
+                          <span>{d.trancheLabel}</span>
+                          <span>{d.quantity} م³ × {d.pricePerUnit.toFixed(2)} = <span className="font-black text-slate-800">{d.total.toFixed(2)} د</span></span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between text-xs font-bold text-slate-500 bg-white px-3 py-1.5 rounded-lg italic">
+                        <span>الواجب الثابت</span>
+                        <span className="font-black text-slate-800">{data.fixedCharges.toFixed(2)} د</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => setEditingInvoice(null)}
+                    className="flex-1 bg-slate-100 text-slate-600 py-3 rounded-2xl font-black text-sm hover:bg-slate-200 transition-all"
+                  >
+                    إلغاء
+                  </button>
+                  <button
+                    onClick={handleSaveEdit}
+                    className="flex-1 bg-amber-500 text-white py-3 rounded-2xl font-black text-sm hover:bg-amber-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-200"
+                  >
+                    <Save size={18} />
+                    حفظ التعديل
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Camera Modal */}
       {isCameraOpen && (
