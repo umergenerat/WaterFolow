@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { AppData, Tranche, BillingCycle, AppSheetConfig, AuthConfig } from '../types';
 import {
   Settings as SettingsIcon,
@@ -27,7 +27,10 @@ import {
   ShieldAlert,
   Lock,
   Eye,
-  EyeOff
+  EyeOff,
+  Calculator,
+  BarChart2,
+  CheckCircle2
 } from 'lucide-react';
 import { testAppSheetConnection, syncToAppSheet } from '../services/appSheetService';
 
@@ -39,6 +42,7 @@ interface SettingsProps {
 const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
   const [tranches, setTranches] = useState<Tranche[]>(data.tranches);
   const [fixedCharges, setFixedCharges] = useState(data.fixedCharges);
+  const [auditConsumption, setAuditConsumption] = useState<number>(15);
   const [organizationName, setOrganizationName] = useState(data.organizationName || '');
   const [adminName, setAdminName] = useState(data.adminName || '');
   const [themeColor, setThemeColor] = useState(data.themeColor || 'blue');
@@ -193,6 +197,38 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
   const updateTranche = (id: string, field: keyof Tranche, value: any) => {
     setTranches(tranches.map(t => t.id === id ? { ...t, [field]: value } : t));
   };
+
+  // --- Live Billing Audit ---
+  const auditResult = useMemo(() => {
+    let remaining = auditConsumption;
+    const details: { label: string; min: number; max: number | null; quantity: number; price: number; total: number }[] = [];
+    let consumptionCost = 0;
+    const sorted = [...tranches].sort((a, b) => a.min - b.min);
+    for (let i = 0; i < sorted.length; i++) {
+      const t = sorted[i];
+      const range = t.max !== null ? (t.max - t.min) : Infinity;
+      const used = Math.min(remaining, range);
+      if (used > 0) {
+        const cost = used * t.pricePerM3;
+        details.push({
+          label: `الشطر ${i + 1}`,
+          min: t.min,
+          max: t.max,
+          quantity: used,
+          price: t.pricePerM3,
+          total: cost
+        });
+        consumptionCost += cost;
+        remaining -= used;
+      }
+      if (remaining <= 0) break;
+    }
+    return { details, consumptionCost, total: consumptionCost + fixedCharges };
+  }, [auditConsumption, tranches, fixedCharges]);
+
+  const auditBarColors = [
+    'bg-blue-500', 'bg-emerald-500', 'bg-purple-500', 'bg-orange-500', 'bg-rose-500'
+  ];
 
   const inputClasses = "w-full px-4 py-2 bg-white border border-slate-200 text-slate-900 rounded-xl outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-bold text-sm placeholder:text-slate-300";
   const textareaClasses = "w-full px-4 py-3 bg-white border border-slate-200 text-slate-900 rounded-xl outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-medium text-sm min-h-[100px]";
@@ -530,6 +566,110 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
                 <label className="block text-xs font-black text-slate-400 uppercase mb-2">الواجب الثابت للفاتورة (درهم)</label>
                 <input type="number" step="0.1" className={`${inputClasses} text-xl py-4 h-14`} value={fixedCharges} onChange={(e) => setFixedCharges(Number(e.target.value))} />
               </div>
+            </div>
+          </div>
+
+          {/* Billing Audit Simulator */}
+          <div className="bg-gradient-to-br from-blue-50 to-white p-8 rounded-3xl border border-blue-100 shadow-sm">
+            <div className="flex items-center gap-3 border-b border-blue-100 pb-4 mb-6">
+              <div className="p-2 bg-blue-600 text-white rounded-xl">
+                <Calculator size={22} />
+              </div>
+              <div>
+                <h3 className="font-black text-blue-900 text-lg">محاكي تدقيق الفاتورة</h3>
+                <p className="text-xs font-bold text-slate-500">تحقق من صحة حساب الأشطر المحددة أعلاه قبل الحفظ</p>
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-xs font-black text-slate-500 uppercase tracking-wider mb-2">كمية الاستهلاك التجريبية (م³)</label>
+              <div className="flex items-center gap-4">
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={auditConsumption}
+                  onChange={(e) => setAuditConsumption(Math.max(0, Number(e.target.value)))}
+                  className="w-40 px-4 py-3 bg-white border-2 border-blue-200 text-blue-900 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all font-black text-2xl text-center"
+                />
+                <span className="text-slate-400 font-bold">م³ استهلاك تجريبي</span>
+              </div>
+            </div>
+
+            {auditResult.details.length > 0 && (
+              <div className="mb-6">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">توزيع الكمية على الأشطر</p>
+                <div className="flex gap-1 h-5 rounded-full overflow-hidden w-full">
+                  {auditResult.details.map((d, i) => (
+                    <div
+                      key={i}
+                      title={`${d.label}: ${d.quantity} م³`}
+                      className={`${auditBarColors[i % auditBarColors.length]} transition-all`}
+                      style={{ width: `${(d.quantity / auditConsumption) * 100}%` }}
+                    />
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-3 mt-2">
+                  {auditResult.details.map((d, i) => (
+                    <div key={i} className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600">
+                      <span className={`w-2.5 h-2.5 rounded-full ${auditBarColors[i % auditBarColors.length]}`} />
+                      {d.label}: {d.quantity} م³
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="overflow-hidden rounded-2xl border border-blue-100">
+              <table className="w-full text-right text-sm">
+                <thead>
+                  <tr className="bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest">
+                    <th className="px-5 py-3">الشطر</th>
+                    <th className="px-5 py-3">النطاق</th>
+                    <th className="px-5 py-3">الكمية</th>
+                    <th className="px-5 py-3">السعر/م³</th>
+                    <th className="px-5 py-3 text-left">المجموع الجزئي</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-blue-50">
+                  {auditResult.details.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-5 py-4 text-center text-slate-400 font-bold text-xs">أدخل كمية استهلاك أكبر من صفر</td>
+                    </tr>
+                  ) : (
+                    auditResult.details.map((d, i) => (
+                      <tr key={i} className="bg-white hover:bg-blue-50/40 transition-colors">
+                        <td className="px-5 py-3 font-black text-slate-700">{d.label}</td>
+                        <td className="px-5 py-3 font-mono text-slate-500 text-xs">{d.min} – {d.max !== null ? d.max : '∞'} م³</td>
+                        <td className="px-5 py-3 font-black text-blue-700">{d.quantity} م³</td>
+                        <td className="px-5 py-3 font-mono text-slate-700">{d.price.toFixed(2)} د</td>
+                        <td className="px-5 py-3 text-left font-black text-slate-900">{d.total.toFixed(2)} د</td>
+                      </tr>
+                    ))
+                  )}
+                  <tr className="bg-slate-50">
+                    <td className="px-5 py-3 italic text-slate-500" colSpan={4}>الواجب الثابت للفاتورة</td>
+                    <td className="px-5 py-3 text-left font-black text-slate-900">{fixedCharges.toFixed(2)} د</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-4 flex items-center justify-between bg-blue-600 text-white p-5 rounded-2xl shadow-lg">
+              <div className="flex items-center gap-2 font-black text-sm">
+                <CheckCircle2 size={20} />
+                الإجمالي الواجب أداؤه لـ {auditConsumption} م³
+              </div>
+              <div className="font-black text-3xl font-mono">
+                {auditResult.total.toFixed(2)} <span className="text-lg font-medium opacity-70">د</span>
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-start gap-2 p-3 bg-blue-50 rounded-xl border border-blue-100">
+              <Info className="text-blue-500 shrink-0 mt-0.5" size={14} />
+              <p className="text-[10px] font-bold text-blue-800 leading-relaxed">
+                هذه المحاكاة تستخدم الأشطر المعبأة في الجدول أعلاه. لا تنسَ الضغط على «حفظ الكل» لتفعيل التغييرات على الفواتير الجديدة.
+              </p>
             </div>
           </div>
         </div>
