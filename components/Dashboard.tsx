@@ -65,7 +65,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data }) => {
     const subInvoices = data.invoices.filter(i => i.subscriberId === sub.id && i.status === 'غير مؤداة');
     const totalDebt = subInvoices.reduce((acc, curr) => acc + curr.totalAmount, 0);
     
-    const message = await generateArrearsReminder(sub, totalDebt, subInvoices.length);
+    const message = await generateArrearsReminder(sub, totalDebt, subInvoices.length, data.organizationName);
     const whatsappUrl = `https://wa.me/${sub.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
     setLoadingReminderId(null);

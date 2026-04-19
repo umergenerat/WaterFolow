@@ -72,7 +72,7 @@ const Payments: React.FC<PaymentsProps> = ({ data, setData }) => {
     if (!sub) return;
 
     try {
-      const message = await generatePaymentConfirmation(invoice, sub, data.paymentTemplate);
+      const message = await generatePaymentConfirmation(invoice, sub, data.paymentTemplate, data.organizationName);
       const encodedMsg = encodeURIComponent(message);
       
       if (channel === 'whatsapp') {
@@ -99,7 +99,8 @@ const Payments: React.FC<PaymentsProps> = ({ data, setData }) => {
       const message = await generateArrearsReminder(
         subscriberDebtInfo.subscriber, 
         subscriberDebtInfo.totalDebt, 
-        subscriberDebtInfo.count
+        subscriberDebtInfo.count,
+        data.organizationName
       );
       const whatsappUrl = `https://wa.me/${subscriberDebtInfo.subscriber.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(message)}`;
       window.open(whatsappUrl, '_blank');

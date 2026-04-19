@@ -14,8 +14,10 @@ export function formatTemplate(template: string, data: any): string {
     '{المبلغ}': data.invoice?.totalAmount || '',
     '{رقم_الفاتورة}': data.invoice?.invoiceNumber || '',
     '{رقم_الوصل}': data.invoice?.receiptNumber || '',
+    '{قم_الوصل}': data.invoice?.receiptNumber || '',
     '{تاريخ_الاستحقاق}': data.invoice?.dueDate || '',
     '{الاستهلاك}': data.invoice?.consumption || '',
+    '{اسم_الجمعية}': data.organizationName || '',
   };
 
   Object.keys(map).forEach(key => {
@@ -25,18 +27,18 @@ export function formatTemplate(template: string, data: any): string {
   return formatted;
 }
 
-export async function generateNotificationMessage(invoice: Invoice, subscriber: Subscriber, customTemplate?: string): Promise<string> {
+export async function generateNotificationMessage(invoice: Invoice, subscriber: Subscriber, customTemplate?: string, organizationName?: string): Promise<string> {
   if (customTemplate) {
-    return formatTemplate(customTemplate, { subscriber, invoice });
+    return formatTemplate(customTemplate, { subscriber, invoice, organizationName });
   }
 
-  const defaultMsg = `تحية طيبة، نخبركم بصدور فاتورتكم رقم ${invoice.invoiceNumber} بمبلغ ${invoice.totalAmount} درهم.`;
+  const defaultMsg = `تحية طيبة، نخبركم بصدور فاتورتكم رقم ${invoice.invoiceNumber} بمبلغ ${invoice.totalAmount} درهم.` + (organizationName ? `\n\nالمرسل: ${organizationName}` : '');
   
   if (isOffline()) return defaultMsg;
 
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const prompt = `صغ رسالة واتساب مهنية للمشترك ${subscriber.fullName} لإبلاغه بصدور فاتورته الجديدة رقم ${invoice.invoiceNumber} بمبلغ ${invoice.totalAmount} درهم.`;
+    const prompt = `صغ رسالة واتساب مهنية للمشترك ${subscriber.fullName} لإبلاغه بصدور فاتورته الجديدة رقم ${invoice.invoiceNumber} بمبلغ ${invoice.totalAmount} درهم.` + (organizationName ? ` أضف في نهاية الرسالة أن المرسل هو "${organizationName}".` : '');
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
@@ -47,16 +49,16 @@ export async function generateNotificationMessage(invoice: Invoice, subscriber: 
   }
 }
 
-export async function generatePaymentConfirmation(invoice: Invoice, subscriber: Subscriber, customTemplate?: string): Promise<string> {
+export async function generatePaymentConfirmation(invoice: Invoice, subscriber: Subscriber, customTemplate?: string, organizationName?: string): Promise<string> {
   if (customTemplate) {
-    return formatTemplate(customTemplate, { subscriber, invoice });
+    return formatTemplate(customTemplate, { subscriber, invoice, organizationName });
   }
 
-  return `تم استلام مبلغ ${invoice.totalAmount} درهم بنجاح للسيد(ة) ${subscriber.fullName}. رقم الوصل: ${invoice.receiptNumber}.`;
+  return `تم استلام مبلغ ${invoice.totalAmount} درهم بنجاح للسيد(ة) ${subscriber.fullName}. رقم الوصل: ${invoice.receiptNumber}.` + (organizationName ? `\n\nالمرسل: ${organizationName}` : '');
 }
 
-export async function generateArrearsReminder(subscriber: Subscriber, totalDebt: number, unpaidCount: number): Promise<string> {
-  const defaultMsg = `تحية طيبة السيد(ة) ${subscriber.fullName}، نذكركم بأن ذمتكم تحتوي على ${unpaidCount} فواتير غير مؤداة بمبلغ إجمالي ${totalDebt} درهم. المرجو التسوية في أقرب وقت.`;
+export async function generateArrearsReminder(subscriber: Subscriber, totalDebt: number, unpaidCount: number, organizationName?: string): Promise<string> {
+  const defaultMsg = `تحية طيبة السيد(ة) ${subscriber.fullName}، نذكركم بأن ذمتكم تحتوي على ${unpaidCount} فواتير غير مؤداة بمبلغ إجمالي ${totalDebt} درهم. المرجو التسوية في أقرب وقت.` + (organizationName ? `\n\nالمرسل: ${organizationName}` : '');
 
   if (isOffline()) return defaultMsg;
 
@@ -67,8 +69,7 @@ export async function generateArrearsReminder(subscriber: Subscriber, totalDebt:
       المعطيات:
       - إجمالي الديون العالقة: ${totalDebt} درهم.
       - عدد الفواتير غير المؤداة: ${unpaidCount}.
-      يجب أن تكون الرسالة حازمة ولكن مهذبة، تحث على الأداء لتجنب انقطاع الخدمة.
-    `;
+      يجب أن تكون الرسالة حازمة ولكن مهذبة، تحث على الأداء لتجنب انقطاع الخدمة.` + (organizationName ? `\nأضف في نهاية الرسالة أن المرسل هو "${organizationName}".` : '');
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,

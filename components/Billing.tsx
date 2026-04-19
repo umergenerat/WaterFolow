@@ -272,7 +272,7 @@ const Billing: React.FC<BillingProps> = ({ data, setData }) => {
     if (!sub) return;
 
     try {
-      const message = await generateNotificationMessage(invoice, sub, data.billingTemplate);
+      const message = await generateNotificationMessage(invoice, sub, data.billingTemplate, data.organizationName);
       const encodedMsg = encodeURIComponent(message);
       
       if (channel === 'whatsapp') {
