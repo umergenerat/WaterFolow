@@ -54,7 +54,35 @@ export async function generatePaymentConfirmation(invoice: Invoice, subscriber: 
     return formatTemplate(customTemplate, { subscriber, invoice, organizationName });
   }
 
-  return `تم استلام مبلغ ${invoice.totalAmount} درهم بنجاح للسيد(ة) ${subscriber.fullName}. رقم الوصل: ${invoice.receiptNumber}.` + (organizationName ? `\n\nالمرسل: ${organizationName}` : '');
+  const defaultMsg = (organizationName ? `[إشعار رسمي: ${organizationName}]\n\n` : '') + 
+    `نؤكد لكم استلام مبلغ ${invoice.totalAmount} درهم بنجاح للسيد(ة) ${subscriber.fullName}.\n` +
+    `رقم الوصل: ${invoice.receiptNumber}\n` +
+    `تاريخ الأداء: ${invoice.paymentDate || new Date().toISOString().split('T')[0]}\n\n` +
+    `شكراً لكم على التزامكم.` + 
+    (organizationName ? `\n\nالمرسل: إدارة ${organizationName}` : '');
+
+  if (isOffline()) return defaultMsg;
+
+  try {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const prompt = `
+      بصفتك المسؤول المالي لنظام تدبير الماء ${organizationName ? `التابع لـ "${organizationName}"` : ''}، 
+      صغ رسالة تأكيد أداء رسمية للمشترك ${subscriber.fullName}.
+      المعطيات:
+      - المبلغ المستلم: ${invoice.totalAmount} درهم.
+      - رقم الوصل: ${invoice.receiptNumber}.
+      - رقم الفاتورة المعنية: ${invoice.invoiceNumber}.
+      يجب أن تكون الرسالة احترافية جداً، وتبدأ بعبارة تثبت هوية الجهة المرسلة ${organizationName ? `(مثل: إشعار رسمي من ${organizationName})` : ''}.
+      أكد في الرسالة أن هذه العملية مسجلة في النظام الرقمي للجمعية وذمة المشترك بريئة من هذا المبلغ.`;
+      
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt,
+    });
+    return response.text || defaultMsg;
+  } catch (error) {
+    return defaultMsg;
+  }
 }
 
 export async function generateArrearsReminder(subscriber: Subscriber, totalDebt: number, unpaidCount: number, organizationName?: string): Promise<string> {
