@@ -11,6 +11,7 @@ export function formatTemplate(template: string, data: any): string {
   let formatted = template;
   const map: Record<string, any> = {
     '{الاسم}': data.subscriber?.fullName || '',
+    '{رقم_العداد}': data.subscriber?.meterNumber || '',
     '{المبلغ}': data.invoice?.totalAmount || '',
     '{رقم_الفاتورة}': data.invoice?.invoiceNumber || '',
     '{رقم_الوصل}': data.invoice?.receiptNumber || '',
@@ -32,13 +33,17 @@ export async function generateNotificationMessage(invoice: Invoice, subscriber: 
     return formatTemplate(customTemplate, { subscriber, invoice, organizationName });
   }
 
-  const defaultMsg = `تحية طيبة، نخبركم بصدور فاتورتكم رقم ${invoice.invoiceNumber} بمبلغ ${invoice.totalAmount} درهم.` + (organizationName ? `\n\nالمرسل: ${organizationName}` : '');
+  const identityHeader = organizationName ? `[إشعار رسمي: ${organizationName}]\n\n` : '';
+  const identityFooter = organizationName ? `\n\nالمرسل: إدارة ${organizationName}` : '';
+
+  const defaultMsg = `${identityHeader}تحية طيبة السيد(ة) ${subscriber.fullName}، نخبركم بصدور فاتورتكم رقم ${invoice.invoiceNumber} للعداد رقم ${subscriber.meterNumber} بمبلغ ${invoice.totalAmount} درهم.${identityFooter}`;
   
   if (isOffline()) return defaultMsg;
 
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const prompt = `صغ رسالة واتساب مهنية للمشترك ${subscriber.fullName} لإبلاغه بصدور فاتورته الجديدة رقم ${invoice.invoiceNumber} بمبلغ ${invoice.totalAmount} درهم.` + (organizationName ? ` أضف في نهاية الرسالة أن المرسل هو "${organizationName}".` : '');
+    const prompt = `صغ رسالة واتساب مهنية للمشترك ${subscriber.fullName} لإبلاغه بصدور فاتورته الجديدة رقم ${invoice.invoiceNumber} للعداد رقم ${subscriber.meterNumber} بمبلغ ${invoice.totalAmount} درهم.` + 
+      (organizationName ? ` يجب أن تبدأ الرسالة بعبارة "[إشعار رسمي: ${organizationName}]" وتختم بعبارة "المرسل: إدارة ${organizationName}".` : '');
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
@@ -54,12 +59,17 @@ export async function generatePaymentConfirmation(invoice: Invoice, subscriber: 
     return formatTemplate(customTemplate, { subscriber, invoice, organizationName });
   }
 
-  const defaultMsg = (organizationName ? `[إشعار رسمي: ${organizationName}]\n\n` : '') + 
+  const identityHeader = organizationName ? `[إشعار رسمي: ${organizationName}]\n\n` : '';
+  const identityFooter = organizationName ? `\n\nالمرسل: إدارة ${organizationName}` : '';
+
+  const defaultMsg = identityHeader + 
     `نؤكد لكم استلام مبلغ ${invoice.totalAmount} درهم بنجاح للسيد(ة) ${subscriber.fullName}.\n` +
+    `رقم العداد: ${subscriber.meterNumber}\n` +
+    `رقم الفاتورة: ${invoice.invoiceNumber}\n` +
     `رقم الوصل: ${invoice.receiptNumber}\n` +
     `تاريخ الأداء: ${invoice.paymentDate || new Date().toISOString().split('T')[0]}\n\n` +
     `شكراً لكم على التزامكم.` + 
-    (organizationName ? `\n\nالمرسل: إدارة ${organizationName}` : '');
+    identityFooter;
 
   if (isOffline()) return defaultMsg;
 
@@ -70,10 +80,12 @@ export async function generatePaymentConfirmation(invoice: Invoice, subscriber: 
       صغ رسالة تأكيد أداء رسمية للمشترك ${subscriber.fullName}.
       المعطيات:
       - المبلغ المستلم: ${invoice.totalAmount} درهم.
+      - رقم العداد: ${subscriber.meterNumber}.
       - رقم الوصل: ${invoice.receiptNumber}.
       - رقم الفاتورة المعنية: ${invoice.invoiceNumber}.
-      يجب أن تكون الرسالة احترافية جداً، وتبدأ بعبارة تثبت هوية الجهة المرسلة ${organizationName ? `(مثل: إشعار رسمي من ${organizationName})` : ''}.
-      أكد في الرسالة أن هذه العملية مسجلة في النظام الرقمي للجمعية وذمة المشترك بريئة من هذا المبلغ.`;
+      يجب أن تكون الرسالة احترافية جداً، وتبدأ بعبارة تثبت هوية الجهة المرسلة ${organizationName ? `(يجب أن تكون: [إشعار رسمي: ${organizationName}])` : ''}.
+      أكد في الرسالة أن هذه العملية مسجلة في النظام الرقمي للجمعية وذمة المشترك بريئة من هذا المبلغ.
+      ${organizationName ? `اختم الرسالة بعبارة "المرسل: إدارة ${organizationName}".` : ''}`;
       
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -86,7 +98,10 @@ export async function generatePaymentConfirmation(invoice: Invoice, subscriber: 
 }
 
 export async function generateArrearsReminder(subscriber: Subscriber, totalDebt: number, unpaidCount: number, organizationName?: string): Promise<string> {
-  const defaultMsg = `تحية طيبة السيد(ة) ${subscriber.fullName}، نذكركم بأن ذمتكم تحتوي على ${unpaidCount} فواتير غير مؤداة بمبلغ إجمالي ${totalDebt} درهم. المرجو التسوية في أقرب وقت.` + (organizationName ? `\n\nالمرسل: ${organizationName}` : '');
+  const identityHeader = organizationName ? `[إشعار رسمي: ${organizationName}]\n\n` : '';
+  const identityFooter = organizationName ? `\n\nالمرسل: إدارة ${organizationName}` : '';
+  
+  const defaultMsg = `${identityHeader}تحية طيبة السيد(ة) ${subscriber.fullName}، نذكركم بأن ذمتكم تحتوي على ${unpaidCount} فواتير غير مؤداة بمبلغ إجمالي ${totalDebt} درهم. المرجو التسوية في أقرب وقت.${identityFooter}`;
 
   if (isOffline()) return defaultMsg;
 
@@ -97,7 +112,8 @@ export async function generateArrearsReminder(subscriber: Subscriber, totalDebt:
       المعطيات:
       - إجمالي الديون العالقة: ${totalDebt} درهم.
       - عدد الفواتير غير المؤداة: ${unpaidCount}.
-      يجب أن تكون الرسالة حازمة ولكن مهذبة، تحث على الأداء لتجنب انقطاع الخدمة.` + (organizationName ? `\nأضف في نهاية الرسالة أن المرسل هو "${organizationName}".` : '');
+      يجب أن تكون الرسالة حازمة ولكن مهذبة، تحث على الأداء لتجنب انقطاع الخدمة.
+      ${organizationName ? `يجب أن تبدأ الرسالة بعبارة "[إشعار رسمي: ${organizationName}]" وتختم بعبارة "المرسل: إدارة ${organizationName}".` : ''}`;
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
