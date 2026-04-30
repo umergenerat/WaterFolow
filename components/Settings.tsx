@@ -30,7 +30,9 @@ import {
   EyeOff,
   Calculator,
   BarChart2,
-  CheckCircle2
+  CheckCircle2,
+  Database,
+  Download
 } from 'lucide-react';
 import { testAppSheetConnection, syncToAppSheet } from '../services/appSheetService';
 
@@ -158,6 +160,71 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
     } finally {
       setIsSyncing(false);
     }
+  };
+
+  const handleExportData = () => {
+    const exportData = {
+      ...data,
+      tranches,
+      fixedCharges,
+      organizationName,
+      adminName,
+      themeColor,
+      logoUrl,
+      billingCycle,
+      autoNotify,
+      billingTemplate,
+      paymentTemplate,
+      appSheetConfig: asConfig,
+      authConfig: authConfig
+    };
+    const dataStr = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `waterflow_backup_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const importedData = JSON.parse(event.target?.result as string);
+        if (importedData && typeof importedData === 'object' && Array.isArray(importedData.subscribers)) {
+          if (window.confirm('هل أنت متأكد من استيراد هذه البيانات؟ سيتم استبدال كافة البيانات والإعدادات الحالية بالكامل.')) {
+            setData(importedData);
+            
+            // Sync local state variables with imported data
+            if (importedData.tranches) setTranches(importedData.tranches);
+            if (importedData.fixedCharges !== undefined) setFixedCharges(importedData.fixedCharges);
+            if (importedData.organizationName) setOrganizationName(importedData.organizationName);
+            if (importedData.adminName) setAdminName(importedData.adminName);
+            if (importedData.themeColor) setThemeColor(importedData.themeColor);
+            if (importedData.logoUrl) setLogoUrl(importedData.logoUrl);
+            if (importedData.billingCycle) setBillingCycle(importedData.billingCycle);
+            if (importedData.autoNotify !== undefined) setAutoNotify(importedData.autoNotify);
+            if (importedData.appSheetConfig) setAsConfig(importedData.appSheetConfig);
+            if (importedData.authConfig) setAuthConfig(importedData.authConfig);
+
+            alert('✅ تم استيراد البيانات والمزامنة بنجاح!');
+          }
+        } else {
+          alert('❌ ملف غير صالح: لا يحتوي على بيانات التطبيق الصحيحة.');
+        }
+      } catch (error) {
+        alert('❌ حدث خطأ أثناء قراءة الملف. تأكد من أنه ملف JSON صحيح.');
+      }
+      if (e.target) e.target.value = '';
+    };
+    reader.readAsText(file);
   };
 
   const handleSave = () => {
@@ -393,6 +460,74 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
                 )}
               </div>
             )}
+          </div>
+
+          {/* Data Backup & Sync Panel */}
+          <div className="bg-gradient-to-br from-teal-50 to-white p-8 rounded-3xl border border-teal-100 shadow-sm space-y-6">
+            <div className="flex justify-between items-center border-b border-teal-100 pb-4">
+              <h3 className="font-black text-teal-900 flex items-center gap-3 text-lg">
+                <Database className="text-teal-600" size={24} />
+                النسخ الاحتياطي والمزامنة المحلية
+              </h3>
+              <div className="flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase bg-teal-100 text-teal-700">
+                نظام الأوفلاين
+              </div>
+            </div>
+            
+            <p className="text-sm font-bold text-slate-500">
+              يمكنك نقل بياناتك بين الحاسوب والهاتف بسهولة. قم بتصدير البيانات من جهازك الأول (PC/الهاتف)، ثم استوردها في الجهاز الثاني للحصول على أحدث المستجدات.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Export Button */}
+              <div className="p-6 bg-white border border-teal-100 rounded-2xl flex flex-col items-center justify-center text-center gap-4 hover:border-teal-300 transition-all">
+                <div className="p-4 bg-teal-50 text-teal-600 rounded-full">
+                  <Download size={32} />
+                </div>
+                <div>
+                  <h4 className="font-black text-slate-800">تصدير البيانات</h4>
+                  <p className="text-xs font-bold text-slate-500 mt-1">حفظ نسخة احتياطية من جميع بياناتك (ملف JSON)</p>
+                </div>
+                <button 
+                  onClick={handleExportData}
+                  className="w-full mt-2 px-4 py-3 bg-teal-600 text-white rounded-xl font-black text-sm hover:bg-teal-700 transition-all flex items-center justify-center gap-2"
+                >
+                  <Download size={18} />
+                  تحميل ملف المزامنة
+                </button>
+              </div>
+
+              {/* Import Button */}
+              <div className="p-6 bg-white border border-teal-100 rounded-2xl flex flex-col items-center justify-center text-center gap-4 hover:border-teal-300 transition-all relative overflow-hidden group">
+                <div className="p-4 bg-amber-50 text-amber-600 rounded-full group-hover:scale-110 transition-transform">
+                  <Upload size={32} />
+                </div>
+                <div>
+                  <h4 className="font-black text-slate-800">استيراد البيانات</h4>
+                  <p className="text-xs font-bold text-slate-500 mt-1">استعادة البيانات أو مزامنتها من جهاز آخر</p>
+                </div>
+                <input 
+                  type="file" 
+                  accept=".json" 
+                  onChange={handleImportData}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                  title="اختر ملف النسخة الاحتياطية"
+                />
+                <button 
+                  className="w-full mt-2 px-4 py-3 bg-white border border-teal-200 text-teal-700 rounded-xl font-black text-sm hover:bg-teal-50 transition-all flex items-center justify-center gap-2 pointer-events-none"
+                >
+                  <Upload size={18} />
+                  اختر الملف للرفع
+                </button>
+              </div>
+            </div>
+            
+            <div className="flex items-start gap-2 p-3 bg-teal-50 rounded-xl border border-teal-100">
+              <Info className="text-teal-500 shrink-0 mt-0.5" size={14} />
+              <p className="text-[10px] font-bold text-teal-800 leading-relaxed">
+                ملاحظة: عملية الاستيراد ستقوم باستبدال البيانات الحالية بالكامل. في حال كنت تقوم بالمزامنة بين الهاتف والحاسوب، تأكد من تصدير أحدث نسخة من الجهاز الذي عملت عليه مؤخراً واستيرادها في الجهاز الآخر.
+              </p>
+            </div>
           </div>
 
           {/* Billing & Notification Selection */}
