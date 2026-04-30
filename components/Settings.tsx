@@ -32,7 +32,9 @@ import {
   BarChart2,
   CheckCircle2,
   Database,
-  Download
+  Download,
+  Copy,
+  Smartphone
 } from 'lucide-react';
 import { testAppSheetConnection, syncToAppSheet } from '../services/appSheetService';
 
@@ -66,6 +68,7 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
   const [authConfig, setAuthConfig] = useState<AuthConfig>(data.authConfig);
   const [showPassword, setShowPassword] = useState(false);
   const [logoError, setLogoError] = useState(false);
+  const [importText, setImportText] = useState('');
 
   // Reset error when logo changes
   React.useEffect(() => {
@@ -188,6 +191,62 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  const handleCopyText = async () => {
+    const exportData = {
+      ...data,
+      tranches,
+      fixedCharges,
+      organizationName,
+      adminName,
+      themeColor,
+      logoUrl,
+      billingCycle,
+      autoNotify,
+      billingTemplate,
+      paymentTemplate,
+      appSheetConfig: asConfig,
+      authConfig: authConfig
+    };
+    const dataStr = JSON.stringify(exportData);
+    try {
+      await navigator.clipboard.writeText(dataStr);
+      alert('✅ تم نسخ البيانات كرمز نصي بنجاح!');
+    } catch (err) {
+      alert('❌ فشل نسخ البيانات.');
+    }
+  };
+
+  const handleImportFromText = () => {
+    if (!importText.trim()) {
+      alert('الرجاء لصق الرمز النصي أولاً.');
+      return;
+    }
+    try {
+      const importedData = JSON.parse(importText);
+      if (importedData && typeof importedData === 'object' && Array.isArray(importedData.subscribers)) {
+        if (window.confirm('هل أنت متأكد من استيراد هذه البيانات؟ سيتم استبدال كافة البيانات والإعدادات الحالية بالكامل.')) {
+          setData(importedData);
+          if (importedData.tranches) setTranches(importedData.tranches);
+          if (importedData.fixedCharges !== undefined) setFixedCharges(importedData.fixedCharges);
+          if (importedData.organizationName) setOrganizationName(importedData.organizationName);
+          if (importedData.adminName) setAdminName(importedData.adminName);
+          if (importedData.themeColor) setThemeColor(importedData.themeColor);
+          if (importedData.logoUrl) setLogoUrl(importedData.logoUrl);
+          if (importedData.billingCycle) setBillingCycle(importedData.billingCycle);
+          if (importedData.autoNotify !== undefined) setAutoNotify(importedData.autoNotify);
+          if (importedData.appSheetConfig) setAsConfig(importedData.appSheetConfig);
+          if (importedData.authConfig) setAuthConfig(importedData.authConfig);
+          setImportText('');
+          alert('✅ تم استيراد البيانات والمزامنة بنجاح!');
+        }
+      } else {
+        alert('❌ نص غير صالح: لا يحتوي على بيانات التطبيق الصحيحة.');
+      }
+    } catch (error) {
+      alert('❌ حدث خطأ أثناء قراءة النص. تأكد من أنك قمت بنسخ الرمز بالكامل.');
+    }
   };
 
   const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -462,71 +521,72 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
             )}
           </div>
 
-          {/* Data Backup & Sync Panel */}
-          <div className="bg-gradient-to-br from-teal-50 to-white p-8 rounded-3xl border border-teal-100 shadow-sm space-y-6">
-            <div className="flex justify-between items-center border-b border-teal-100 pb-4">
-              <h3 className="font-black text-teal-900 flex items-center gap-3 text-lg">
-                <Database className="text-teal-600" size={24} />
-                النسخ الاحتياطي والمزامنة المحلية
-              </h3>
-              <div className="flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase bg-teal-100 text-teal-700">
-                نظام الأوفلاين
-              </div>
+          {/* Data Backup & Sync Panel - NEW DARK UI */}
+          <div className="bg-[#0f172a] p-8 rounded-3xl shadow-lg border border-slate-800/50 space-y-6 text-right" dir="rtl">
+            <div className="flex justify-start items-center gap-3 mb-2">
+              <RefreshCw className="text-[#34d399]" size={28} />
+              <h2 className="text-2xl font-black text-white">المزامنة والنسخ الاحتياطي</h2>
             </div>
-            
-            <p className="text-sm font-bold text-slate-500">
-              يمكنك نقل بياناتك بين الحاسوب والهاتف بسهولة. قم بتصدير البيانات من جهازك الأول (PC/الهاتف)، ثم استوردها في الجهاز الثاني للحصول على أحدث المستجدات.
+            <p className="text-sm font-medium text-slate-400 leading-relaxed mb-8">
+              يتيح لك هذا القسم مزامنة البيانات بين الحاسوب والهاتف، أو أخذ نسخة احتياطية من معلوماتك. يمكنك تصدير البيانات كملف أو نسخها كنص لمشاركتها عبر تطبيقات المراسلة.
             </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Export Button */}
-              <div className="p-6 bg-white border border-teal-100 rounded-2xl flex flex-col items-center justify-center text-center gap-4 hover:border-teal-300 transition-all">
-                <div className="p-4 bg-teal-50 text-teal-600 rounded-full">
-                  <Download size={32} />
-                </div>
-                <div>
-                  <h4 className="font-black text-slate-800">تصدير البيانات</h4>
-                  <p className="text-xs font-bold text-slate-500 mt-1">حفظ نسخة احتياطية من جميع بياناتك (ملف JSON)</p>
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
+              {/* Export Column (Right in RTL - first element) */}
+              <div className="space-y-4">
+                <h3 className="text-[#34d399] font-black text-center mb-6 text-lg">تصدير البيانات (من هذا الجهاز)</h3>
+                
                 <button 
                   onClick={handleExportData}
-                  className="w-full mt-2 px-4 py-3 bg-teal-600 text-white rounded-xl font-black text-sm hover:bg-teal-700 transition-all flex items-center justify-center gap-2"
+                  className="w-full flex items-center justify-center gap-3 py-3.5 px-4 bg-[#064e3b]/40 hover:bg-[#064e3b]/60 border border-[#065f46] text-[#6ee7b7] rounded-xl transition-all font-bold"
                 >
-                  <Download size={18} />
-                  تحميل ملف المزامنة
+                  <Download size={20} />
+                  تنزيل كملف (JSON)
+                </button>
+
+                <button 
+                  onClick={handleCopyText}
+                  className="w-full flex items-center justify-center gap-3 py-3.5 px-4 bg-[#064e3b]/40 hover:bg-[#064e3b]/60 border border-[#065f46] text-[#6ee7b7] rounded-xl transition-all font-bold"
+                >
+                  <Copy size={20} />
+                  نسخ كرمز نصي (للمشاركة)
                 </button>
               </div>
 
-              {/* Import Button */}
-              <div className="p-6 bg-white border border-teal-100 rounded-2xl flex flex-col items-center justify-center text-center gap-4 hover:border-teal-300 transition-all relative overflow-hidden group">
-                <div className="p-4 bg-amber-50 text-amber-600 rounded-full group-hover:scale-110 transition-transform">
-                  <Upload size={32} />
+              {/* Import Column (Left in RTL - second element) */}
+              <div className="space-y-4 pt-6 md:pt-0 border-t border-slate-800 md:border-t-0 md:border-r md:border-slate-800 md:pr-8">
+                <h3 className="text-[#60a5fa] font-black text-center mb-6 text-lg">استيراد البيانات (إلى هذا الجهاز)</h3>
+                
+                <div className="relative group">
+                  <input 
+                    type="file" 
+                    accept=".json" 
+                    onChange={handleImportData}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                    title="اختر ملف النسخة الاحتياطية"
+                  />
+                  <button className="w-full flex items-center justify-center gap-3 py-3.5 px-4 bg-[#1e3a8a]/40 group-hover:bg-[#1e3a8a]/60 border border-[#1e40af] text-[#93c5fd] rounded-xl transition-all font-bold pointer-events-none">
+                    <Upload size={20} />
+                    رفع ملف بيانات (JSON)
+                  </button>
                 </div>
-                <div>
-                  <h4 className="font-black text-slate-800">استيراد البيانات</h4>
-                  <p className="text-xs font-bold text-slate-500 mt-1">استعادة البيانات أو مزامنتها من جهاز آخر</p>
-                </div>
-                <input 
-                  type="file" 
-                  accept=".json" 
-                  onChange={handleImportData}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                  title="اختر ملف النسخة الاحتياطية"
+
+                <div className="text-right text-sm font-bold text-slate-400 mt-6 mb-2">أو لصق الرمز النصي هنا:</div>
+                <textarea
+                  value={importText}
+                  onChange={(e) => setImportText(e.target.value)}
+                  className="w-full h-24 bg-[#0f172a] border border-[#1e40af]/50 rounded-xl p-4 text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#3b82f6] focus:ring-1 focus:ring-[#3b82f6] transition-all text-sm font-mono resize-none custom-scrollbar"
+                  placeholder="ألصق الرمز هنا..."
                 />
+                
                 <button 
-                  className="w-full mt-2 px-4 py-3 bg-white border border-teal-200 text-teal-700 rounded-xl font-black text-sm hover:bg-teal-50 transition-all flex items-center justify-center gap-2 pointer-events-none"
+                  onClick={handleImportFromText}
+                  className="w-full flex items-center justify-center gap-3 py-3.5 px-4 bg-[#1d4ed8] hover:bg-[#2563eb] text-white rounded-xl transition-all font-bold mt-2 shadow-lg shadow-blue-900/20"
                 >
-                  <Upload size={18} />
-                  اختر الملف للرفع
+                  <Smartphone size={20} />
+                  استيراد من النص
                 </button>
               </div>
-            </div>
-            
-            <div className="flex items-start gap-2 p-3 bg-teal-50 rounded-xl border border-teal-100">
-              <Info className="text-teal-500 shrink-0 mt-0.5" size={14} />
-              <p className="text-[10px] font-bold text-teal-800 leading-relaxed">
-                ملاحظة: عملية الاستيراد ستقوم باستبدال البيانات الحالية بالكامل. في حال كنت تقوم بالمزامنة بين الهاتف والحاسوب، تأكد من تصدير أحدث نسخة من الجهاز الذي عملت عليه مؤخراً واستيرادها في الجهاز الآخر.
-              </p>
             </div>
           </div>
 
