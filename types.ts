@@ -59,6 +59,7 @@ export interface Invoice {
   paymentMethod?: PaymentMethod;
   receiptNumber?: string;
   notificationSent?: boolean;
+  hasError?: boolean;
 }
 
 export interface AppData {

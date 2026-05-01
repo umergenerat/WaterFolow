@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import { AppData, Invoice } from '../types';
-import { FilePlus, History, ChevronRight, Calculator, CheckCircle, Share2, Droplets, Printer, Camera, X, RefreshCw, Loader2, Code2, Bell, MessageSquare, MessageCircle, Phone, Check, RotateCcw, Download, Upload, Pencil, Save } from 'lucide-react';
+import { FilePlus, History, ChevronRight, Calculator, CheckCircle, Share2, Droplets, Printer, Camera, X, RefreshCw, Loader2, Code2, Bell, MessageSquare, MessageCircle, Phone, Check, RotateCcw, Download, Upload, Pencil, Save, AlertTriangle } from 'lucide-react';
 import { calculateTranches } from '../utils/storage';
 import { generateNotificationMessage, extractMeterReading } from '../services/geminiService';
 import * as XLSX from 'xlsx';
@@ -353,6 +353,13 @@ const Billing: React.FC<BillingProps> = ({ data, setData }) => {
     );
   };
 
+  const toggleInvoiceError = (id: string) => {
+    setData({
+      ...data,
+      invoices: data.invoices.map(i => i.id === id ? { ...i, hasError: !i.hasError } : i)
+    });
+  };
+
   const handleStartEdit = (inv: Invoice) => {
     setEditingInvoice(inv);
     setEditCurrentIndex(Number(inv.currentIndex));
@@ -689,13 +696,14 @@ const Billing: React.FC<BillingProps> = ({ data, setData }) => {
                   const sub = data.subscribers.find(s => s.id === inv.subscriberId);
                   const isSelected = selectedInvoices.includes(inv.id);
                   return (
-                    <tr key={inv.id} className={`hover:bg-slate-50 transition-colors ${isSelected ? 'bg-blue-50/50' : ''}`}>
+                    <tr key={inv.id} className={`transition-colors ${inv.hasError ? 'bg-red-50/80 border-r-4 border-red-500 hover:bg-red-100/80' : isSelected ? 'bg-blue-50/50 hover:bg-blue-50/70' : 'hover:bg-slate-50'}`}>
                       <td className="px-6 py-4">
                         <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-blue-600" checked={isSelected} onChange={() => toggleInvoiceSelection(inv.id)} />
                       </td>
                       <td className="px-6 py-4 font-black font-mono text-blue-600 text-xs lg:text-sm">
                         <div className="flex items-center gap-2">
                            {inv.notificationSent && <Bell size={10} className="text-emerald-500" />}
+                           {inv.hasError && <AlertTriangle size={12} className="text-red-500" />}
                            {inv.invoiceNumber}
                         </div>
                       </td>
@@ -705,13 +713,14 @@ const Billing: React.FC<BillingProps> = ({ data, setData }) => {
                       <td className="px-6 py-4 font-black text-slate-900 text-xs lg:text-sm">{inv.totalAmount.toFixed(2)} د</td>
                       <td className="px-6 py-4">
                         <span className={`px-2 lg:px-3 py-1 rounded-full text-[9px] lg:text-[10px] font-black ${
-                          inv.status === 'مؤداة' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-red-50 text-red-700 border border-red-100'
+                          inv.status === 'مؤداة' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-slate-100 text-slate-700 border border-slate-200'
                         }`}>
                           {inv.status}
                         </span>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-1.5">
+                          <button onClick={() => toggleInvoiceError(inv.id)} title={inv.hasError ? "إلغاء وضع الخطأ" : "تحديد كفاتورة بها خطأ للتدقيق"} className={`p-1.5 rounded-lg ${inv.hasError ? 'text-white bg-red-500 hover:bg-red-600 shadow-sm' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}><AlertTriangle size={16} /></button>
                           <button onClick={() => handleStartEdit(inv)} title="تعديل الفاتورة" className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg"><Pencil size={16} /></button>
                           <button onClick={() => { setSelectedInvoices([inv.id]); handlePrint(); }} className="p-1.5 text-slate-400 hover:text-slate-900 bg-slate-50 rounded-lg"><Printer size={16} /></button>
                           <button onClick={() => handleNotify(inv, 'whatsapp')} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg"><MessageSquare size={16} /></button>
