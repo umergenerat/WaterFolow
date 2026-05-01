@@ -29,12 +29,16 @@ export function formatTemplate(template: string, data: any): string {
 }
 
 export async function generateNotificationMessage(invoice: Invoice, subscriber: Subscriber, customTemplate?: string, organizationName?: string): Promise<string> {
-  if (customTemplate) {
-    return formatTemplate(customTemplate, { subscriber, invoice, organizationName });
-  }
-
   const identityHeader = organizationName ? `[إشعار رسمي: ${organizationName}]\n\n` : '';
   const identityFooter = organizationName ? `\n\nالمرسل: إدارة ${organizationName}` : '';
+
+  if (customTemplate) {
+    const customMsg = formatTemplate(customTemplate, { subscriber, invoice, organizationName });
+    const hasOrgName = organizationName && customMsg.includes(organizationName);
+    return hasOrgName ? customMsg : `${identityHeader}${customMsg}${identityFooter}`;
+  }
+
+
 
   const defaultMsg = `${identityHeader}تحية طيبة السيد(ة) ${subscriber.fullName}، نخبركم بصدور فاتورتكم رقم ${invoice.invoiceNumber} للعداد رقم ${subscriber.meterNumber} بمبلغ ${invoice.totalAmount} درهم.${identityFooter}`;
   
@@ -55,12 +59,16 @@ export async function generateNotificationMessage(invoice: Invoice, subscriber: 
 }
 
 export async function generatePaymentConfirmation(invoice: Invoice, subscriber: Subscriber, customTemplate?: string, organizationName?: string): Promise<string> {
-  if (customTemplate) {
-    return formatTemplate(customTemplate, { subscriber, invoice, organizationName });
-  }
-
   const identityHeader = organizationName ? `[إشعار رسمي: ${organizationName}]\n\n` : '';
   const identityFooter = organizationName ? `\n\nالمرسل: إدارة ${organizationName}` : '';
+
+  if (customTemplate) {
+    const customMsg = formatTemplate(customTemplate, { subscriber, invoice, organizationName });
+    const hasOrgName = organizationName && customMsg.includes(organizationName);
+    return hasOrgName ? customMsg : `${identityHeader}${customMsg}${identityFooter}`;
+  }
+
+
 
   const defaultMsg = identityHeader + 
     `نؤكد لكم استلام مبلغ ${invoice.totalAmount} درهم بنجاح للسيد(ة) ${subscriber.fullName}.\n` +
