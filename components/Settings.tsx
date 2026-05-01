@@ -78,8 +78,11 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
 
   // QR Code States
   const [showQRMode, setShowQRMode] = useState(false);
-  const [qrCodeData, setQrCodeData] = useState('');
+  const [qrCodeData, setQrCodeData] = useState<string[]>([]);
+  const [currentQRIndex, setCurrentQRIndex] = useState(0);
   const [isScanningQR, setIsScanningQR] = useState(false);
+  const [scannedQRChunks, setScannedQRChunks] = useState<Record<number, string>>({});
+  const [expectedQRChunks, setExpectedQRChunks] = useState<number>(0);
 
   // Reset error when logo changes
   React.useEffect(() => {
@@ -224,19 +227,16 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
       let dataStr = JSON.stringify(exportData);
       let compressed = LZString.compressToEncodedURIComponent(dataStr);
       
-      if (compressed.length > 2500) {
-        const configOnlyData = {
-          ...exportData,
-          subscribers: [],
-          invoices: [],
-          _isConfigOnly: true
-        };
-        dataStr = JSON.stringify(configOnlyData);
-        compressed = LZString.compressToEncodedURIComponent(dataStr);
-        alert('حجم البيانات كبير جداً. سيتم عرض رمز QR للإعدادات فقط (بدون المشتركين والفواتير). يرجى سحب البقية عبر AppSheet.');
+      const CHUNK_SIZE = 1500;
+      const chunks: string[] = [];
+      for (let i = 0; i < compressed.length; i += CHUNK_SIZE) {
+        chunks.push(compressed.substring(i, i + CHUNK_SIZE));
       }
       
-      setQrCodeData(compressed);
+      const formattedChunks = chunks.map((chunk, index) => `WFSYNC|${index}|${chunks.length}|${chunk}`);
+      
+      setQrCodeData(formattedChunks);
+      setCurrentQRIndex(0);
       setShowQRMode(true);
       setIsScanningQR(false);
     } catch (err) {
@@ -248,39 +248,90 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
     if (!detectedCodes || detectedCodes.length === 0) return;
     const text = detectedCodes[0].rawValue;
     if (!text) return;
+    
     try {
-      const decompressed = LZString.decompressFromEncodedURIComponent(text);
-      if (!decompressed) throw new Error("Invalid QR data");
-      const importedData = JSON.parse(decompressed);
-      
-      if (importedData && typeof importedData === 'object') {
-        if (window.confirm('هل أنت متأكد من استيراد هذه البيانات؟ سيتم استبدال الإعدادات الحالية.')) {
-          if (importedData._isConfigOnly) {
-            importedData.subscribers = data.subscribers;
-            importedData.invoices = data.invoices;
+      if (text.startsWith('WFSYNC|')) {
+        const parts = text.split('|');
+        const index = parseInt(parts[1], 10);
+        const total = parseInt(parts[2], 10);
+        const chunkData = parts[3];
+        
+        setExpectedQRChunks(total);
+        
+        setScannedQRChunks(prev => {
+          const newChunks = { ...prev, [index]: chunkData };
+          
+          if (Object.keys(newChunks).length === total) {
+            try {
+               let fullCompressed = '';
+               for (let i = 0; i < total; i++) fullCompressed += newChunks[i];
+               const decompressed = LZString.decompressFromEncodedURIComponent(fullCompressed);
+               if (!decompressed) throw new Error("Invalid QR data");
+               const importedData = JSON.parse(decompressed);
+               
+               if (importedData && typeof importedData === 'object') {
+                 if (window.confirm('هل أنت متأكد من استيراد هذه البيانات؟ سيتم استبدال كافة البيانات.')) {
+                   setData(importedData);
+                   if (importedData.tranches) setTranches(importedData.tranches);
+                   if (importedData.fixedCharges !== undefined) setFixedCharges(importedData.fixedCharges);
+                   if (importedData.organizationName) setOrganizationName(importedData.organizationName);
+                   if (importedData.adminName) setAdminName(importedData.adminName);
+                   if (importedData.themeColor) setThemeColor(importedData.themeColor);
+                   if (importedData.logoUrl) setLogoUrl(importedData.logoUrl);
+                   if (importedData.billingCycle) setBillingCycle(importedData.billingCycle);
+                   if (importedData.autoNotify !== undefined) setAutoNotify(importedData.autoNotify);
+                   if (importedData.appSheetConfig) setAsConfig(importedData.appSheetConfig);
+                   if (importedData.authConfig) setAuthConfig(importedData.authConfig);
+                   
+                   setIsScanningQR(false);
+                   setShowQRMode(false);
+                   setScannedQRChunks({});
+                   setExpectedQRChunks(0);
+                   alert('✅ تمت مزامنة البيانات بنجاح!');
+                 }
+               }
+            } catch (e) {
+               alert('❌ خطأ في تجميع البيانات.');
+            }
           }
-          
-          setData(importedData);
-          if (importedData.tranches) setTranches(importedData.tranches);
-          if (importedData.fixedCharges !== undefined) setFixedCharges(importedData.fixedCharges);
-          if (importedData.organizationName) setOrganizationName(importedData.organizationName);
-          if (importedData.adminName) setAdminName(importedData.adminName);
-          if (importedData.themeColor) setThemeColor(importedData.themeColor);
-          if (importedData.logoUrl) setLogoUrl(importedData.logoUrl);
-          if (importedData.billingCycle) setBillingCycle(importedData.billingCycle);
-          if (importedData.autoNotify !== undefined) setAutoNotify(importedData.autoNotify);
-          if (importedData.appSheetConfig) setAsConfig(importedData.appSheetConfig);
-          if (importedData.authConfig) setAuthConfig(importedData.authConfig);
-          
-          setIsScanningQR(false);
-          setShowQRMode(false);
-          alert('✅ تمت مزامنة البيانات بنجاح!');
-        }
+          return newChunks;
+        });
       } else {
-        alert('❌ بيانات QR غير صالحة.');
+        const decompressed = LZString.decompressFromEncodedURIComponent(text);
+        if (!decompressed) throw new Error("Invalid QR data");
+        const importedData = JSON.parse(decompressed);
+        
+        if (importedData && typeof importedData === 'object') {
+          if (window.confirm('هل أنت متأكد من استيراد هذه البيانات؟ سيتم استبدال الإعدادات الحالية.')) {
+            if (importedData._isConfigOnly) {
+              importedData.subscribers = data.subscribers;
+              importedData.invoices = data.invoices;
+            }
+            
+            setData(importedData);
+            if (importedData.tranches) setTranches(importedData.tranches);
+            if (importedData.fixedCharges !== undefined) setFixedCharges(importedData.fixedCharges);
+            if (importedData.organizationName) setOrganizationName(importedData.organizationName);
+            if (importedData.adminName) setAdminName(importedData.adminName);
+            if (importedData.themeColor) setThemeColor(importedData.themeColor);
+            if (importedData.logoUrl) setLogoUrl(importedData.logoUrl);
+            if (importedData.billingCycle) setBillingCycle(importedData.billingCycle);
+            if (importedData.autoNotify !== undefined) setAutoNotify(importedData.autoNotify);
+            if (importedData.appSheetConfig) setAsConfig(importedData.appSheetConfig);
+            if (importedData.authConfig) setAuthConfig(importedData.authConfig);
+            
+            setIsScanningQR(false);
+            setShowQRMode(false);
+            alert('✅ تمت مزامنة البيانات بنجاح!');
+          }
+        } else {
+          alert('❌ بيانات QR غير صالحة.');
+        }
       }
     } catch (error) {
-      alert('❌ حدث خطأ أثناء قراءة QR. تأكد من أن الرمز خاص بهذا التطبيق.');
+      if (!isScanningQR) {
+        alert('❌ حدث خطأ أثناء قراءة QR. تأكد من أن الرمز خاص بهذا التطبيق.');
+      }
     }
   };
 
@@ -619,7 +670,7 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
             </div>
 
             {/* QR Overlays */}
-            {showQRMode && (
+            {showQRMode && qrCodeData.length > 0 && (
               <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
                 <div className="bg-white p-8 rounded-3xl max-w-sm w-full flex flex-col items-center gap-6 relative animate-in zoom-in-95 duration-200">
                   <button 
@@ -631,12 +682,33 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
                   
                   <div className="text-center space-y-2 mt-4">
                     <h3 className="font-black text-xl text-slate-800">رمز المزامنة</h3>
-                    <p className="text-sm font-bold text-slate-500">امسح هذا الرمز باستخدام الجهاز الآخر لمزامنة الإعدادات.</p>
+                    <p className="text-sm font-bold text-slate-500">
+                      {qrCodeData.length > 1 ? `امسح الأجزاء بالتتابع (${currentQRIndex + 1} من ${qrCodeData.length})` : 'امسح الرمز بالجهاز الآخر'}
+                    </p>
                   </div>
                   
                   <div className="p-4 bg-white rounded-2xl border-4 border-blue-50 shadow-inner">
-                    <QRCode value={qrCodeData} size={240} />
+                    <QRCode value={qrCodeData[currentQRIndex]} size={240} />
                   </div>
+                  
+                  {qrCodeData.length > 1 && (
+                    <div className="flex gap-2 w-full mt-2">
+                      <button 
+                        disabled={currentQRIndex === 0}
+                        onClick={() => setCurrentQRIndex(prev => prev - 1)}
+                        className="flex-1 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 py-3 rounded-xl font-bold transition-all"
+                      >
+                        السابق
+                      </button>
+                      <button 
+                        disabled={currentQRIndex === qrCodeData.length - 1}
+                        onClick={() => setCurrentQRIndex(prev => prev + 1)}
+                        className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-3 rounded-xl font-bold transition-all"
+                      >
+                        التالي
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -645,7 +717,7 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
               <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
                 <div className="bg-[#0f172a] p-6 rounded-3xl max-w-md w-full flex flex-col items-center gap-6 relative border border-slate-800">
                   <button 
-                    onClick={() => setIsScanningQR(false)}
+                    onClick={() => { setIsScanningQR(false); setScannedQRChunks({}); setExpectedQRChunks(0); }}
                     className="absolute top-4 right-4 p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-full transition-colors z-10"
                   >
                     <X size={20} />
@@ -656,7 +728,9 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
                       <Camera className="text-blue-500" />
                       مسح رمز المزامنة
                     </h3>
-                    <p className="text-sm font-bold text-slate-400">وجه الكاميرا نحو رمز QR في الجهاز الآخر.</p>
+                    <p className="text-sm font-bold text-slate-400">
+                      {expectedQRChunks > 1 ? `تم مسح ${Object.keys(scannedQRChunks).length} من ${expectedQRChunks} أجزاء` : 'وجه الكاميرا نحو رمز QR في الجهاز الآخر.'}
+                    </p>
                   </div>
                   
                   <div className="w-full aspect-square rounded-2xl overflow-hidden border-4 border-slate-800 bg-black relative">
@@ -666,6 +740,12 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
                       sound={false}
                     />
                   </div>
+                  
+                  {expectedQRChunks > 1 && (
+                     <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                       <div className="bg-blue-500 h-full transition-all duration-300" style={{ width: `${(Object.keys(scannedQRChunks).length / expectedQRChunks) * 100}%` }}></div>
+                     </div>
+                  )}
                 </div>
               </div>
             )}
