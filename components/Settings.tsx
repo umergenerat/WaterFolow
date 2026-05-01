@@ -34,8 +34,14 @@ import {
   Database,
   Download,
   Copy,
-  Smartphone
+  Smartphone,
+  QrCode,
+  Camera,
+  X
 } from 'lucide-react';
+import QRCode from 'react-qr-code';
+import { Scanner } from '@yudiel/react-qr-scanner';
+import LZString from 'lz-string';
 import { testAppSheetConnection, syncToAppSheet } from '../services/appSheetService';
 
 interface SettingsProps {
@@ -69,6 +75,11 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [logoError, setLogoError] = useState(false);
   const [importText, setImportText] = useState('');
+
+  // QR Code States
+  const [showQRMode, setShowQRMode] = useState(false);
+  const [qrCodeData, setQrCodeData] = useState('');
+  const [isScanningQR, setIsScanningQR] = useState(false);
 
   // Reset error when logo changes
   React.useEffect(() => {
@@ -193,7 +204,7 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
     URL.revokeObjectURL(url);
   };
 
-  const handleCopyText = async () => {
+  const handleShowQR = () => {
     const exportData = {
       ...data,
       tranches,
@@ -209,24 +220,46 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
       appSheetConfig: asConfig,
       authConfig: authConfig
     };
-    const dataStr = JSON.stringify(exportData);
     try {
-      await navigator.clipboard.writeText(dataStr);
-      alert('✅ تم نسخ البيانات كرمز نصي بنجاح!');
+      let dataStr = JSON.stringify(exportData);
+      let compressed = LZString.compressToEncodedURIComponent(dataStr);
+      
+      if (compressed.length > 2500) {
+        const configOnlyData = {
+          ...exportData,
+          subscribers: [],
+          invoices: [],
+          _isConfigOnly: true
+        };
+        dataStr = JSON.stringify(configOnlyData);
+        compressed = LZString.compressToEncodedURIComponent(dataStr);
+        alert('حجم البيانات كبير جداً. سيتم عرض رمز QR للإعدادات فقط (بدون المشتركين والفواتير). يرجى سحب البقية عبر AppSheet.');
+      }
+      
+      setQrCodeData(compressed);
+      setShowQRMode(true);
+      setIsScanningQR(false);
     } catch (err) {
-      alert('❌ فشل نسخ البيانات.');
+      alert('❌ فشل إنشاء رمز QR.');
     }
   };
 
-  const handleImportFromText = () => {
-    if (!importText.trim()) {
-      alert('الرجاء لصق الرمز النصي أولاً.');
-      return;
-    }
+  const handleScanSuccess = (detectedCodes: any[]) => {
+    if (!detectedCodes || detectedCodes.length === 0) return;
+    const text = detectedCodes[0].rawValue;
+    if (!text) return;
     try {
-      const importedData = JSON.parse(importText);
-      if (importedData && typeof importedData === 'object' && Array.isArray(importedData.subscribers)) {
-        if (window.confirm('هل أنت متأكد من استيراد هذه البيانات؟ سيتم استبدال كافة البيانات والإعدادات الحالية بالكامل.')) {
+      const decompressed = LZString.decompressFromEncodedURIComponent(text);
+      if (!decompressed) throw new Error("Invalid QR data");
+      const importedData = JSON.parse(decompressed);
+      
+      if (importedData && typeof importedData === 'object') {
+        if (window.confirm('هل أنت متأكد من استيراد هذه البيانات؟ سيتم استبدال الإعدادات الحالية.')) {
+          if (importedData._isConfigOnly) {
+            importedData.subscribers = data.subscribers;
+            importedData.invoices = data.invoices;
+          }
+          
           setData(importedData);
           if (importedData.tranches) setTranches(importedData.tranches);
           if (importedData.fixedCharges !== undefined) setFixedCharges(importedData.fixedCharges);
@@ -238,14 +271,16 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
           if (importedData.autoNotify !== undefined) setAutoNotify(importedData.autoNotify);
           if (importedData.appSheetConfig) setAsConfig(importedData.appSheetConfig);
           if (importedData.authConfig) setAuthConfig(importedData.authConfig);
-          setImportText('');
-          alert('✅ تم استيراد البيانات والمزامنة بنجاح!');
+          
+          setIsScanningQR(false);
+          setShowQRMode(false);
+          alert('✅ تمت مزامنة البيانات بنجاح!');
         }
       } else {
-        alert('❌ نص غير صالح: لا يحتوي على بيانات التطبيق الصحيحة.');
+        alert('❌ بيانات QR غير صالحة.');
       }
     } catch (error) {
-      alert('❌ حدث خطأ أثناء قراءة النص. تأكد من أنك قمت بنسخ الرمز بالكامل.');
+      alert('❌ حدث خطأ أثناء قراءة QR. تأكد من أن الرمز خاص بهذا التطبيق.');
     }
   };
 
@@ -545,11 +580,11 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
                 </button>
 
                 <button 
-                  onClick={handleCopyText}
+                  onClick={handleShowQR}
                   className="w-full flex items-center justify-center gap-3 py-3.5 px-4 bg-[#064e3b]/40 hover:bg-[#064e3b]/60 border border-[#065f46] text-[#6ee7b7] rounded-xl transition-all font-bold"
                 >
-                  <Copy size={20} />
-                  نسخ كرمز نصي (للمشاركة)
+                  <QrCode size={20} />
+                  عرض رمز QR للمزامنة
                 </button>
               </div>
 
@@ -571,23 +606,69 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
                   </button>
                 </div>
 
-                <div className="text-right text-sm font-bold text-slate-400 mt-6 mb-2">أو لصق الرمز النصي هنا:</div>
-                <textarea
-                  value={importText}
-                  onChange={(e) => setImportText(e.target.value)}
-                  className="w-full h-24 bg-[#0f172a] border border-[#1e40af]/50 rounded-xl p-4 text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#3b82f6] focus:ring-1 focus:ring-[#3b82f6] transition-all text-sm font-mono resize-none custom-scrollbar"
-                  placeholder="ألصق الرمز هنا..."
-                />
+                <div className="text-right text-sm font-bold text-slate-400 mt-6 mb-2">المزامنة عبر كاميرا الهاتف:</div>
                 
                 <button 
-                  onClick={handleImportFromText}
+                  onClick={() => setIsScanningQR(true)}
                   className="w-full flex items-center justify-center gap-3 py-3.5 px-4 bg-[#1d4ed8] hover:bg-[#2563eb] text-white rounded-xl transition-all font-bold mt-2 shadow-lg shadow-blue-900/20"
                 >
-                  <Smartphone size={20} />
-                  استيراد من النص
+                  <Camera size={20} />
+                  مسح رمز QR
                 </button>
               </div>
             </div>
+
+            {/* QR Overlays */}
+            {showQRMode && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                <div className="bg-white p-8 rounded-3xl max-w-sm w-full flex flex-col items-center gap-6 relative animate-in zoom-in-95 duration-200">
+                  <button 
+                    onClick={() => setShowQRMode(false)}
+                    className="absolute top-4 right-4 p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-full transition-colors"
+                  >
+                    <X size={20} />
+                  </button>
+                  
+                  <div className="text-center space-y-2 mt-4">
+                    <h3 className="font-black text-xl text-slate-800">رمز المزامنة</h3>
+                    <p className="text-sm font-bold text-slate-500">امسح هذا الرمز باستخدام الجهاز الآخر لمزامنة الإعدادات.</p>
+                  </div>
+                  
+                  <div className="p-4 bg-white rounded-2xl border-4 border-blue-50 shadow-inner">
+                    <QRCode value={qrCodeData} size={240} />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {isScanningQR && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
+                <div className="bg-[#0f172a] p-6 rounded-3xl max-w-md w-full flex flex-col items-center gap-6 relative border border-slate-800">
+                  <button 
+                    onClick={() => setIsScanningQR(false)}
+                    className="absolute top-4 right-4 p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-full transition-colors z-10"
+                  >
+                    <X size={20} />
+                  </button>
+                  
+                  <div className="text-center space-y-2 mt-4 w-full">
+                    <h3 className="font-black text-xl text-white flex items-center justify-center gap-2">
+                      <Camera className="text-blue-500" />
+                      مسح رمز المزامنة
+                    </h3>
+                    <p className="text-sm font-bold text-slate-400">وجه الكاميرا نحو رمز QR في الجهاز الآخر.</p>
+                  </div>
+                  
+                  <div className="w-full aspect-square rounded-2xl overflow-hidden border-4 border-slate-800 bg-black relative">
+                    <Scanner 
+                      onScan={handleScanSuccess} 
+                      formats={['qr_code']}
+                      sound={false}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Billing & Notification Selection */}
