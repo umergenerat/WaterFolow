@@ -227,7 +227,7 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
       let dataStr = JSON.stringify(exportData);
       let compressed = LZString.compressToEncodedURIComponent(dataStr);
       
-      const CHUNK_SIZE = 1500;
+      const CHUNK_SIZE = 800; // Reduced for faster and more reliable scanning
       const chunks: string[] = [];
       for (let i = 0; i < compressed.length; i += CHUNK_SIZE) {
         chunks.push(compressed.substring(i, i + CHUNK_SIZE));
@@ -298,7 +298,7 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
         });
       } else {
         const decompressed = LZString.decompressFromEncodedURIComponent(text);
-        if (!decompressed) throw new Error("Invalid QR data");
+        if (!decompressed) return;
         const importedData = JSON.parse(decompressed);
         
         if (importedData && typeof importedData === 'object') {
@@ -324,14 +324,11 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
             setShowQRMode(false);
             alert('✅ تمت مزامنة البيانات بنجاح!');
           }
-        } else {
-          alert('❌ بيانات QR غير صالحة.');
         }
       }
     } catch (error) {
-      if (!isScanningQR) {
-        alert('❌ حدث خطأ أثناء قراءة QR. تأكد من أن الرمز خاص بهذا التطبيق.');
-      }
+      // Ignore scanning errors to not interrupt the camera stream
+      console.error('QR Scan error ignored:', error);
     }
   };
 
