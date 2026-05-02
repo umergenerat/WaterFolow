@@ -291,6 +291,9 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
   };
 
   const handleShowQR = () => {
+    // Strip heavy base64 strings to keep the QR payload ultra-light
+    const safeLogoUrl = logoUrl && logoUrl.startsWith('data:image') ? '' : logoUrl;
+    
     const exportData = {
       ...data,
       tranches,
@@ -298,7 +301,7 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
       organizationName,
       adminName,
       themeColor,
-      logoUrl,
+      logoUrl: safeLogoUrl,
       billingCycle,
       autoNotify,
       billingTemplate,
@@ -310,7 +313,9 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
       let dataStr = JSON.stringify(exportData);
       let compressed = LZString.compressToEncodedURIComponent(dataStr);
       
-      const CHUNK_SIZE = 500; // Reduced to 500 for much lower density and faster scanning per frame
+      // Maximize chunk size so most settings fit in a SINGLE static QR code.
+      // QR Version 40 L can hold ~2950 alphanumeric chars. 2500 is safe.
+      const CHUNK_SIZE = 2500; 
       const chunks: string[] = [];
       for (let i = 0; i < compressed.length; i += CHUNK_SIZE) {
         chunks.push(compressed.substring(i, i + CHUNK_SIZE));
@@ -320,6 +325,7 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
       
       setQrCodeData(formattedChunks);
       setCurrentQRIndex(0);
+      setQrAutoAdvance(true); // Always auto-stream if there are multiple parts (fountain style)
       setShowQRMode(true);
       setIsScanningQR(false);
     } catch (err) {
