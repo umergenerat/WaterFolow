@@ -84,7 +84,8 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
   const [scannedQRChunks, setScannedQRChunks] = useState<Record<number, string>>({});
   const [expectedQRChunks, setExpectedQRChunks] = useState<number>(0);
   const [isProcessingQR, setIsProcessingQR] = useState(false);
-  const [qrAutoAdvance, setQrAutoAdvance] = useState(true);
+  const [qrAutoAdvance, setQrAutoAdvance] = useState(false); // Static by default as requested
+  const [pulseScan, setPulseScan] = useState(false);
 
   // Auto-advance QR codes for streaming sync (stops at the end)
   React.useEffect(() => {
@@ -104,6 +105,16 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
       if (interval) clearInterval(interval);
     };
   }, [showQRMode, qrCodeData.length, qrAutoAdvance]);
+
+  // Trigger a visual pulse when a new chunk is scanned
+  React.useEffect(() => {
+    const scannedCount = Object.keys(scannedQRChunks).length;
+    if (scannedCount > 0 && !isProcessingQR) {
+      setPulseScan(true);
+      const t = setTimeout(() => setPulseScan(false), 300);
+      return () => clearTimeout(t);
+    }
+  }, [Object.keys(scannedQRChunks).length]);
 
   // Process complete QR chunks safely outside of render cycle
   React.useEffect(() => {
@@ -825,13 +836,26 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
                     </p>
                   </div>
                   
-                  <div className="w-full aspect-square rounded-2xl overflow-hidden border-4 border-slate-800 bg-black relative">
+                  <div className="w-full aspect-square rounded-2xl overflow-hidden border-4 border-slate-800 bg-black relative group">
                     {!isProcessingQR ? (
-                      <Scanner 
-                        onScan={handleScanSuccess} 
-                        formats={['qr_code']}
-                        sound={false}
-                      />
+                      <>
+                        <Scanner 
+                          onScan={handleScanSuccess} 
+                          formats={['qr_code']}
+                          sound={false}
+                        />
+                        {/* Professional Red Laser Line */}
+                        <div className="absolute left-0 right-0 h-0.5 bg-red-500 shadow-[0_0_15px_rgba(239,68,68,1)] animate-scan-line z-10"></div>
+                        
+                        {/* Success Pulse Overlay */}
+                        <div className={`absolute inset-0 bg-emerald-500/30 transition-opacity duration-300 pointer-events-none z-20 ${pulseScan ? 'opacity-100' : 'opacity-0'}`}></div>
+                        
+                        {/* Corner Framing Guides */}
+                        <div className="absolute top-6 left-6 w-10 h-10 border-t-4 border-l-4 border-white/50 rounded-tl-xl z-10 pointer-events-none"></div>
+                        <div className="absolute top-6 right-6 w-10 h-10 border-t-4 border-r-4 border-white/50 rounded-tr-xl z-10 pointer-events-none"></div>
+                        <div className="absolute bottom-6 left-6 w-10 h-10 border-b-4 border-l-4 border-white/50 rounded-bl-xl z-10 pointer-events-none"></div>
+                        <div className="absolute bottom-6 right-6 w-10 h-10 border-b-4 border-r-4 border-white/50 rounded-br-xl z-10 pointer-events-none"></div>
+                      </>
                     ) : (
                       <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/50 backdrop-blur-md gap-4">
                         <div className="relative">
