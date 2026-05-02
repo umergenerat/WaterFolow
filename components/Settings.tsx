@@ -92,12 +92,63 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
     if (showQRMode && qrCodeData.length > 1 && qrAutoAdvance) {
       interval = setInterval(() => {
         setCurrentQRIndex(prev => (prev + 1) % qrCodeData.length);
-      }, 600); // 600ms cycle speed
+      }, 400); // Increased speed to 400ms since chunks are smaller
     }
     return () => {
       if (interval) clearInterval(interval);
     };
   }, [showQRMode, qrCodeData.length, qrAutoAdvance]);
+
+  // Process complete QR chunks safely outside of render cycle
+  React.useEffect(() => {
+    if (expectedQRChunks > 0 && !isProcessingQR) {
+      const receivedCount = Object.keys(scannedQRChunks).length;
+      if (receivedCount === expectedQRChunks) {
+        setIsProcessingQR(true);
+        const timer = setTimeout(() => {
+          try {
+             let fullCompressed = '';
+             for (let i = 0; i < expectedQRChunks; i++) fullCompressed += scannedQRChunks[i];
+             const decompressed = LZString.decompressFromEncodedURIComponent(fullCompressed);
+             if (!decompressed) throw new Error("Invalid QR data");
+             const importedData = JSON.parse(decompressed);
+             
+             if (importedData && typeof importedData === 'object') {
+               setIsScanningQR(false);
+               if (window.confirm('✅ تم استلام كافة البيانات بنجاح!\n\nهل أنت متأكد من استيراد هذه البيانات؟ سيتم استبدال كافة البيانات الحالية.')) {
+                 setData(importedData);
+                 if (importedData.tranches) setTranches(importedData.tranches);
+                 if (importedData.fixedCharges !== undefined) setFixedCharges(importedData.fixedCharges);
+                 if (importedData.organizationName) setOrganizationName(importedData.organizationName);
+                 if (importedData.adminName) setAdminName(importedData.adminName);
+                 if (importedData.themeColor) setThemeColor(importedData.themeColor);
+                 if (importedData.logoUrl) setLogoUrl(importedData.logoUrl);
+                 if (importedData.billingCycle) setBillingCycle(importedData.billingCycle);
+                 if (importedData.autoNotify !== undefined) setAutoNotify(importedData.autoNotify);
+                 if (importedData.appSheetConfig) setAsConfig(importedData.appSheetConfig);
+                 if (importedData.authConfig) setAuthConfig(importedData.authConfig);
+                 
+                 setShowQRMode(false);
+                 setScannedQRChunks({});
+                 setExpectedQRChunks(0);
+                 setIsProcessingQR(false);
+                 alert('✅ تمت المزامنة والنسخ الاحتياطي بنجاح!');
+               } else {
+                 setIsProcessingQR(false);
+                 setIsScanningQR(true);
+               }
+             }
+          } catch (e) {
+             alert('❌ خطأ في تجميع البيانات: ' + (e instanceof Error ? e.message : 'بيانات غير صالحة'));
+             setScannedQRChunks({});
+             setExpectedQRChunks(0);
+             setIsProcessingQR(false);
+          }
+        }, 500);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [scannedQRChunks, expectedQRChunks, isProcessingQR, setData]);
 
   // Reset error when logo changes
   React.useEffect(() => {
@@ -242,7 +293,7 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
       let dataStr = JSON.stringify(exportData);
       let compressed = LZString.compressToEncodedURIComponent(dataStr);
       
-      const CHUNK_SIZE = 800; // Reduced for faster and more reliable scanning
+      const CHUNK_SIZE = 500; // Reduced to 500 for much lower density and faster scanning per frame
       const chunks: string[] = [];
       for (let i = 0; i < compressed.length; i += CHUNK_SIZE) {
         chunks.push(compressed.substring(i, i + CHUNK_SIZE));
@@ -270,63 +321,10 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
         const index = parseInt(parts[1], 10);
         const total = parseInt(parts[2], 10);
         const chunkData = parts[3];
-        
+        setExpectedQRChunks(total);
         setScannedQRChunks(prev => {
           if (prev[index]) return prev; // Already scanned this part, avoid update
-
-          const newChunks = { ...prev, [index]: chunkData };
-          const receivedCount = Object.keys(newChunks).length;
-          setExpectedQRChunks(total);
-          
-          if (receivedCount === total && !isProcessingQR) {
-            setIsProcessingQR(true);
-            
-            // Short delay to allow state to settle then finalize
-            setTimeout(() => {
-              try {
-                 let fullCompressed = '';
-                 for (let i = 0; i < total; i++) fullCompressed += newChunks[i];
-                 const decompressed = LZString.decompressFromEncodedURIComponent(fullCompressed);
-                 if (!decompressed) throw new Error("Invalid QR data");
-                 const importedData = JSON.parse(decompressed);
-                 
-                 if (importedData && typeof importedData === 'object') {
-                   // Stop scanning BEFORE showing confirm to avoid background camera issues
-                   setIsScanningQR(false);
-                   
-                   if (window.confirm('✅ تم استلام كافة البيانات بنجاح!\n\nهل أنت متأكد من استيراد هذه البيانات؟ سيتم استبدال كافة البيانات الحالية.')) {
-                     setData(importedData);
-                     if (importedData.tranches) setTranches(importedData.tranches);
-                     if (importedData.fixedCharges !== undefined) setFixedCharges(importedData.fixedCharges);
-                     if (importedData.organizationName) setOrganizationName(importedData.organizationName);
-                     if (importedData.adminName) setAdminName(importedData.adminName);
-                     if (importedData.themeColor) setThemeColor(importedData.themeColor);
-                     if (importedData.logoUrl) setLogoUrl(importedData.logoUrl);
-                     if (importedData.billingCycle) setBillingCycle(importedData.billingCycle);
-                     if (importedData.autoNotify !== undefined) setAutoNotify(importedData.autoNotify);
-                     if (importedData.appSheetConfig) setAsConfig(importedData.appSheetConfig);
-                     if (importedData.authConfig) setAuthConfig(importedData.authConfig);
-                     
-                     setShowQRMode(false);
-                     setScannedQRChunks({});
-                     setExpectedQRChunks(0);
-                     setIsProcessingQR(false);
-                     alert('✅ تمت المزامنة والنسخ الاحتياطي بنجاح!');
-                   } else {
-                     // If user cancels, reset processing state so they can try again if they want
-                     setIsProcessingQR(false);
-                     setIsScanningQR(true);
-                   }
-                 }
-              } catch (e) {
-                 alert('❌ خطأ في تجميع البيانات: ' + (e instanceof Error ? e.message : 'بيانات غير صالحة'));
-                 setScannedQRChunks({});
-                 setExpectedQRChunks(0);
-                 setIsProcessingQR(false);
-              }
-            }, 500);
-          }
-          return newChunks;
+          return { ...prev, [index]: chunkData };
         });
       } else {
         // Fallback for non-chunked QR codes (if any exist)
@@ -722,8 +720,8 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
                     </p>
                   </div>
                   
-                  <div className="p-4 bg-white rounded-2xl border-4 border-blue-50 shadow-inner relative group">
-                    <QRCode value={qrCodeData[currentQRIndex]} size={240} />
+                  <div className="p-4 bg-white rounded-2xl border-4 border-blue-50 shadow-inner relative group flex justify-center">
+                    <QRCode value={qrCodeData[currentQRIndex]} size={240} level="L" />
                     {qrCodeData.length > 1 && (
                       <div className="absolute -bottom-1 left-0 right-0 h-1.5 bg-slate-100 rounded-full overflow-hidden mx-4">
                         <div 
@@ -827,11 +825,24 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
                   </div>
                   
                   {(expectedQRChunks > 1 || isProcessingQR) && (
-                     <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                       <div 
-                         className={`h-full transition-all duration-500 ${isProcessingQR ? 'bg-emerald-500' : 'bg-blue-500'}`} 
-                         style={{ width: `${isProcessingQR ? 100 : (Object.keys(scannedQRChunks).length / expectedQRChunks) * 100}%` }}
-                       ></div>
+                     <div className="w-full space-y-2">
+                       <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                         <div 
+                           className={`h-full transition-all duration-500 ${isProcessingQR ? 'bg-emerald-500' : 'bg-blue-500'}`} 
+                           style={{ width: `${isProcessingQR ? 100 : (Object.keys(scannedQRChunks).length / expectedQRChunks) * 100}%` }}
+                         ></div>
+                       </div>
+                       {!isProcessingQR && expectedQRChunks > 0 && (
+                         <div className="flex flex-wrap gap-1 justify-center mt-2 max-h-24 overflow-y-auto p-1">
+                           {Array.from({ length: expectedQRChunks }).map((_, i) => (
+                             <div 
+                               key={i} 
+                               className={`w-3 h-3 rounded-sm transition-colors duration-300 ${scannedQRChunks[i] ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-slate-700'}`}
+                               title={`جزء ${i + 1}`}
+                             />
+                           ))}
+                         </div>
+                       )}
                      </div>
                   )}
                 </div>
