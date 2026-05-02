@@ -83,6 +83,7 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
   const [isScanningQR, setIsScanningQR] = useState(false);
   const [scannedQRChunks, setScannedQRChunks] = useState<Record<number, string>>({});
   const [expectedQRChunks, setExpectedQRChunks] = useState<number>(0);
+  const [isProcessingQR, setIsProcessingQR] = useState(false);
   const [qrAutoAdvance, setQrAutoAdvance] = useState(true);
 
   // Auto-advance QR codes for streaming sync
@@ -259,7 +260,7 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
   };
 
   const handleScanSuccess = (detectedCodes: any[]) => {
-    if (!detectedCodes || detectedCodes.length === 0) return;
+    if (isProcessingQR || !detectedCodes || detectedCodes.length === 0) return;
     const text = detectedCodes[0].rawValue;
     if (!text) return;
     
@@ -270,15 +271,17 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
         const total = parseInt(parts[2], 10);
         const chunkData = parts[3];
         
-        setExpectedQRChunks(total);
         setScannedQRChunks(prev => {
           if (prev[index]) return prev; // Already scanned this part, avoid update
 
           const newChunks = { ...prev, [index]: chunkData };
           const receivedCount = Object.keys(newChunks).length;
+          setExpectedQRChunks(total);
           
-          if (receivedCount === total) {
-            // Delay slightly to show 100% progress before closing
+          if (receivedCount === total && !isProcessingQR) {
+            setIsProcessingQR(true);
+            
+            // Short delay to allow state to settle then finalize
             setTimeout(() => {
               try {
                  let fullCompressed = '';
@@ -288,6 +291,9 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
                  const importedData = JSON.parse(decompressed);
                  
                  if (importedData && typeof importedData === 'object') {
+                   // Stop scanning BEFORE showing confirm to avoid background camera issues
+                   setIsScanningQR(false);
+                   
                    if (window.confirm('✅ تم استلام كافة البيانات بنجاح!\n\nهل أنت متأكد من استيراد هذه البيانات؟ سيتم استبدال كافة البيانات الحالية.')) {
                      setData(importedData);
                      if (importedData.tranches) setTranches(importedData.tranches);
@@ -301,18 +307,24 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
                      if (importedData.appSheetConfig) setAsConfig(importedData.appSheetConfig);
                      if (importedData.authConfig) setAuthConfig(importedData.authConfig);
                      
-                     setIsScanningQR(false);
                      setShowQRMode(false);
                      setScannedQRChunks({});
                      setExpectedQRChunks(0);
+                     setIsProcessingQR(false);
+                     alert('✅ تمت المزامنة والنسخ الاحتياطي بنجاح!');
+                   } else {
+                     // If user cancels, reset processing state so they can try again if they want
+                     setIsProcessingQR(false);
+                     setIsScanningQR(true);
                    }
                  }
               } catch (e) {
                  alert('❌ خطأ في تجميع البيانات: ' + (e instanceof Error ? e.message : 'بيانات غير صالحة'));
                  setScannedQRChunks({});
                  setExpectedQRChunks(0);
+                 setIsProcessingQR(false);
               }
-            }, 300);
+            }, 500);
           }
           return newChunks;
         });
@@ -775,25 +787,51 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
                   
                   <div className="text-center space-y-2 mt-4 w-full">
                     <h3 className="font-black text-xl text-white flex items-center justify-center gap-2">
-                      <Camera className="text-blue-500" />
-                      مسح رمز المزامنة
+                      {isProcessingQR ? (
+                        <>
+                          <CheckCircle2 className="text-emerald-500 animate-bounce" />
+                          تم الاستلام بنجاح
+                        </>
+                      ) : (
+                        <>
+                          <Camera className="text-blue-500" />
+                          مسح رمز المزامنة
+                        </>
+                      )}
                     </h3>
                     <p className="text-sm font-bold text-slate-400">
-                      {expectedQRChunks > 1 ? `تم مسح ${Object.keys(scannedQRChunks).length} من ${expectedQRChunks} أجزاء` : 'وجه الكاميرا نحو رمز QR في الجهاز الآخر.'}
+                      {isProcessingQR 
+                        ? 'جاري تجميع البيانات وتجهيزها للاستيراد...' 
+                        : expectedQRChunks > 1 
+                          ? `تم مسح ${Object.keys(scannedQRChunks).length} من ${expectedQRChunks} أجزاء` 
+                          : 'وجه الكاميرا نحو رمز QR في الجهاز الآخر.'}
                     </p>
                   </div>
                   
                   <div className="w-full aspect-square rounded-2xl overflow-hidden border-4 border-slate-800 bg-black relative">
-                    <Scanner 
-                      onScan={handleScanSuccess} 
-                      formats={['qr_code']}
-                      sound={false}
-                    />
+                    {!isProcessingQR ? (
+                      <Scanner 
+                        onScan={handleScanSuccess} 
+                        formats={['qr_code']}
+                        sound={false}
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/50 backdrop-blur-md gap-4">
+                        <div className="relative">
+                          <div className="w-20 h-20 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
+                          <Check className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-emerald-500" size={32} />
+                        </div>
+                        <p className="text-emerald-400 font-black animate-pulse">100% اكتمل النقل</p>
+                      </div>
+                    )}
                   </div>
                   
-                  {expectedQRChunks > 1 && (
+                  {(expectedQRChunks > 1 || isProcessingQR) && (
                      <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                       <div className="bg-blue-500 h-full transition-all duration-300" style={{ width: `${(Object.keys(scannedQRChunks).length / expectedQRChunks) * 100}%` }}></div>
+                       <div 
+                         className={`h-full transition-all duration-500 ${isProcessingQR ? 'bg-emerald-500' : 'bg-blue-500'}`} 
+                         style={{ width: `${isProcessingQR ? 100 : (Object.keys(scannedQRChunks).length / expectedQRChunks) * 100}%` }}
+                       ></div>
                      </div>
                   )}
                 </div>
