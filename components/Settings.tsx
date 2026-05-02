@@ -83,6 +83,20 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
   const [isScanningQR, setIsScanningQR] = useState(false);
   const [scannedQRChunks, setScannedQRChunks] = useState<Record<number, string>>({});
   const [expectedQRChunks, setExpectedQRChunks] = useState<number>(0);
+  const [qrAutoAdvance, setQrAutoAdvance] = useState(true);
+
+  // Auto-advance QR codes for streaming sync
+  React.useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (showQRMode && qrCodeData.length > 1 && qrAutoAdvance) {
+      interval = setInterval(() => {
+        setCurrentQRIndex(prev => (prev + 1) % qrCodeData.length);
+      }, 600); // 600ms cycle speed
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [showQRMode, qrCodeData.length, qrAutoAdvance]);
 
   // Reset error when logo changes
   React.useEffect(() => {
@@ -257,46 +271,53 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
         const chunkData = parts[3];
         
         setExpectedQRChunks(total);
-        
         setScannedQRChunks(prev => {
+          if (prev[index]) return prev; // Already scanned this part, avoid update
+
           const newChunks = { ...prev, [index]: chunkData };
+          const receivedCount = Object.keys(newChunks).length;
           
-          if (Object.keys(newChunks).length === total) {
-            try {
-               let fullCompressed = '';
-               for (let i = 0; i < total; i++) fullCompressed += newChunks[i];
-               const decompressed = LZString.decompressFromEncodedURIComponent(fullCompressed);
-               if (!decompressed) throw new Error("Invalid QR data");
-               const importedData = JSON.parse(decompressed);
-               
-               if (importedData && typeof importedData === 'object') {
-                 if (window.confirm('هل أنت متأكد من استيراد هذه البيانات؟ سيتم استبدال كافة البيانات.')) {
-                   setData(importedData);
-                   if (importedData.tranches) setTranches(importedData.tranches);
-                   if (importedData.fixedCharges !== undefined) setFixedCharges(importedData.fixedCharges);
-                   if (importedData.organizationName) setOrganizationName(importedData.organizationName);
-                   if (importedData.adminName) setAdminName(importedData.adminName);
-                   if (importedData.themeColor) setThemeColor(importedData.themeColor);
-                   if (importedData.logoUrl) setLogoUrl(importedData.logoUrl);
-                   if (importedData.billingCycle) setBillingCycle(importedData.billingCycle);
-                   if (importedData.autoNotify !== undefined) setAutoNotify(importedData.autoNotify);
-                   if (importedData.appSheetConfig) setAsConfig(importedData.appSheetConfig);
-                   if (importedData.authConfig) setAuthConfig(importedData.authConfig);
-                   
-                   setIsScanningQR(false);
-                   setShowQRMode(false);
-                   setScannedQRChunks({});
-                   setExpectedQRChunks(0);
-                   alert('✅ تمت مزامنة البيانات بنجاح!');
+          if (receivedCount === total) {
+            // Delay slightly to show 100% progress before closing
+            setTimeout(() => {
+              try {
+                 let fullCompressed = '';
+                 for (let i = 0; i < total; i++) fullCompressed += newChunks[i];
+                 const decompressed = LZString.decompressFromEncodedURIComponent(fullCompressed);
+                 if (!decompressed) throw new Error("Invalid QR data");
+                 const importedData = JSON.parse(decompressed);
+                 
+                 if (importedData && typeof importedData === 'object') {
+                   if (window.confirm('✅ تم استلام كافة البيانات بنجاح!\n\nهل أنت متأكد من استيراد هذه البيانات؟ سيتم استبدال كافة البيانات الحالية.')) {
+                     setData(importedData);
+                     if (importedData.tranches) setTranches(importedData.tranches);
+                     if (importedData.fixedCharges !== undefined) setFixedCharges(importedData.fixedCharges);
+                     if (importedData.organizationName) setOrganizationName(importedData.organizationName);
+                     if (importedData.adminName) setAdminName(importedData.adminName);
+                     if (importedData.themeColor) setThemeColor(importedData.themeColor);
+                     if (importedData.logoUrl) setLogoUrl(importedData.logoUrl);
+                     if (importedData.billingCycle) setBillingCycle(importedData.billingCycle);
+                     if (importedData.autoNotify !== undefined) setAutoNotify(importedData.autoNotify);
+                     if (importedData.appSheetConfig) setAsConfig(importedData.appSheetConfig);
+                     if (importedData.authConfig) setAuthConfig(importedData.authConfig);
+                     
+                     setIsScanningQR(false);
+                     setShowQRMode(false);
+                     setScannedQRChunks({});
+                     setExpectedQRChunks(0);
+                   }
                  }
-               }
-            } catch (e) {
-               alert('❌ خطأ في تجميع البيانات.');
-            }
+              } catch (e) {
+                 alert('❌ خطأ في تجميع البيانات: ' + (e instanceof Error ? e.message : 'بيانات غير صالحة'));
+                 setScannedQRChunks({});
+                 setExpectedQRChunks(0);
+              }
+            }, 300);
           }
           return newChunks;
         });
       } else {
+        // Fallback for non-chunked QR codes (if any exist)
         const decompressed = LZString.decompressFromEncodedURIComponent(text);
         if (!decompressed) return;
         const importedData = JSON.parse(decompressed);
@@ -678,32 +699,64 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
                   </button>
                   
                   <div className="text-center space-y-2 mt-4">
-                    <h3 className="font-black text-xl text-slate-800">رمز المزامنة</h3>
+                    <div className="flex items-center justify-center gap-2 mb-1">
+                      <div className={`w-2 h-2 rounded-full ${qrAutoAdvance ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`}></div>
+                      <h3 className="font-black text-xl text-slate-800">رمز المزامنة الذكي</h3>
+                    </div>
                     <p className="text-sm font-bold text-slate-500">
-                      {qrCodeData.length > 1 ? `امسح الأجزاء بالتتابع (${currentQRIndex + 1} من ${qrCodeData.length})` : 'امسح الرمز بالجهاز الآخر'}
+                      {qrCodeData.length > 1 
+                        ? `بث البيانات... (${currentQRIndex + 1} من ${qrCodeData.length})` 
+                        : 'امسح الرمز بالجهاز الآخر'}
                     </p>
                   </div>
                   
-                  <div className="p-4 bg-white rounded-2xl border-4 border-blue-50 shadow-inner">
+                  <div className="p-4 bg-white rounded-2xl border-4 border-blue-50 shadow-inner relative group">
                     <QRCode value={qrCodeData[currentQRIndex]} size={240} />
+                    {qrCodeData.length > 1 && (
+                      <div className="absolute -bottom-1 left-0 right-0 h-1.5 bg-slate-100 rounded-full overflow-hidden mx-4">
+                        <div 
+                          className="bg-blue-600 h-full transition-all duration-300 ease-linear"
+                          style={{ width: `${((currentQRIndex + 1) / qrCodeData.length) * 100}%` }}
+                        ></div>
+                      </div>
+                    )}
                   </div>
                   
                   {qrCodeData.length > 1 && (
-                    <div className="flex gap-2 w-full mt-2">
-                      <button 
-                        disabled={currentQRIndex === 0}
-                        onClick={() => setCurrentQRIndex(prev => prev - 1)}
-                        className="flex-1 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 py-3 rounded-xl font-bold transition-all"
-                      >
-                        السابق
-                      </button>
-                      <button 
-                        disabled={currentQRIndex === qrCodeData.length - 1}
-                        onClick={() => setCurrentQRIndex(prev => prev + 1)}
-                        className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-3 rounded-xl font-bold transition-all"
-                      >
-                        التالي
-                      </button>
+                    <div className="w-full space-y-4">
+                      <div className="flex gap-2 w-full">
+                        <button 
+                          onClick={() => {
+                            setQrAutoAdvance(false);
+                            setCurrentQRIndex(prev => (prev - 1 + qrCodeData.length) % qrCodeData.length);
+                          }}
+                          className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+                        >
+                          السابق
+                        </button>
+                        <button 
+                          onClick={() => setQrAutoAdvance(!qrAutoAdvance)}
+                          className={`flex-1 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${qrAutoAdvance ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'}`}
+                        >
+                          {qrAutoAdvance ? 'إيقاف مؤقت' : 'تشغيل تلقائي'}
+                        </button>
+                        <button 
+                          onClick={() => {
+                            setQrAutoAdvance(false);
+                            setCurrentQRIndex(prev => (prev + 1) % qrCodeData.length);
+                          }}
+                          className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+                        >
+                          التالي
+                        </button>
+                      </div>
+                      
+                      <div className="bg-blue-50 p-3 rounded-xl flex items-start gap-2">
+                        <Info className="text-blue-500 shrink-0 mt-0.5" size={14} />
+                        <p className="text-[10px] font-bold text-blue-700 leading-relaxed">
+                          يتم تبديل الرموز تلقائياً. وجه كاميرا الهاتف الآخر نحو الشاشة وسيقوم بجمع الأجزاء تلقائياً.
+                        </p>
+                      </div>
                     </div>
                   )}
                 </div>
