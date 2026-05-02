@@ -290,11 +290,11 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
     URL.revokeObjectURL(url);
   };
 
-  const handleShowQR = () => {
+  const handleShowQR = (isConfigOnly: boolean = false) => {
     // Strip heavy base64 strings to keep the QR payload ultra-light
     const safeLogoUrl = logoUrl && logoUrl.startsWith('data:image') ? '' : logoUrl;
     
-    const exportData = {
+    let exportData: any = {
       ...data,
       tranches,
       fixedCharges,
@@ -309,13 +309,18 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
       appSheetConfig: asConfig,
       authConfig: authConfig
     };
+
+    if (isConfigOnly) {
+      exportData._isConfigOnly = true;
+      exportData.subscribers = [];
+      exportData.invoices = [];
+    }
     try {
       let dataStr = JSON.stringify(exportData);
       let compressed = LZString.compressToEncodedURIComponent(dataStr);
       
-      // Maximize chunk size so most settings fit in a SINGLE static QR code.
-      // QR Version 40 L can hold ~2950 alphanumeric chars. 2500 is safe.
-      const CHUNK_SIZE = 2500; 
+      // Use 2500 for tiny settings (1 frame), 800 for huge datasets (easy scanning)
+      const CHUNK_SIZE = isConfigOnly ? 2500 : 800; 
       const chunks: string[] = [];
       for (let i = 0; i < compressed.length; i += CHUNK_SIZE) {
         chunks.push(compressed.substring(i, i + CHUNK_SIZE));
@@ -325,7 +330,7 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
       
       setQrCodeData(formattedChunks);
       setCurrentQRIndex(0);
-      setQrAutoAdvance(true); // Always auto-stream if there are multiple parts (fountain style)
+      setQrAutoAdvance(false); // Default to manual progression as requested for full data
       setShowQRMode(true);
       setIsScanningQR(false);
     } catch (err) {
@@ -681,13 +686,22 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
                   تنزيل كملف (JSON)
                 </button>
 
-                <button 
-                  onClick={handleShowQR}
-                  className="w-full flex items-center justify-center gap-3 py-3.5 px-4 bg-[#064e3b]/40 hover:bg-[#064e3b]/60 border border-[#065f46] text-[#6ee7b7] rounded-xl transition-all font-bold"
-                >
-                  <QrCode size={20} />
-                  عرض رمز QR للمزامنة
-                </button>
+                <div className="flex flex-col gap-2">
+                  <button 
+                    onClick={() => handleShowQR(true)}
+                    className="w-full flex items-center justify-center gap-3 py-3.5 px-4 bg-[#059669]/20 hover:bg-[#059669]/40 border border-[#10b981] text-[#34d399] rounded-xl transition-all font-bold"
+                  >
+                    <QrCode size={20} />
+                    مزامنة الإعدادات فقط (رمز واحد ثابت)
+                  </button>
+                  <button 
+                    onClick={() => handleShowQR(false)}
+                    className="w-full flex items-center justify-center gap-3 py-2 px-4 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 text-slate-400 rounded-xl transition-all font-bold text-sm"
+                  >
+                    <QrCode size={16} />
+                    نسخ شامل لكل البيانات (بث متعدد)
+                  </button>
+                </div>
               </div>
 
               {/* Import Column (Left in RTL - second element) */}
