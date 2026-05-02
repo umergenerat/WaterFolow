@@ -86,13 +86,19 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
   const [isProcessingQR, setIsProcessingQR] = useState(false);
   const [qrAutoAdvance, setQrAutoAdvance] = useState(true);
 
-  // Auto-advance QR codes for streaming sync
+  // Auto-advance QR codes for streaming sync (stops at the end)
   React.useEffect(() => {
     let interval: NodeJS.Timeout;
     if (showQRMode && qrCodeData.length > 1 && qrAutoAdvance) {
       interval = setInterval(() => {
-        setCurrentQRIndex(prev => (prev + 1) % qrCodeData.length);
-      }, 400); // Increased speed to 400ms since chunks are smaller
+        setCurrentQRIndex(prev => {
+          if (prev >= qrCodeData.length - 1) {
+            setQrAutoAdvance(false); // Stop when reaching the end
+            return prev;
+          }
+          return prev + 1;
+        });
+      }, 500); // 500ms speed for smooth reading
     }
     return () => {
       if (interval) clearInterval(interval);
@@ -715,7 +721,11 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
                     </div>
                     <p className="text-sm font-bold text-slate-500">
                       {qrCodeData.length > 1 
-                        ? `بث البيانات... (${currentQRIndex + 1} من ${qrCodeData.length})` 
+                        ? qrAutoAdvance 
+                          ? `بث البيانات... (${currentQRIndex + 1} من ${qrCodeData.length})` 
+                          : currentQRIndex >= qrCodeData.length - 1
+                            ? `انتهى البث (${currentQRIndex + 1} من ${qrCodeData.length})`
+                            : `متوقف مؤقتاً (${currentQRIndex + 1} من ${qrCodeData.length})`
                         : 'امسح الرمز بالجهاز الآخر'}
                     </p>
                   </div>
@@ -745,10 +755,15 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
                           السابق
                         </button>
                         <button 
-                          onClick={() => setQrAutoAdvance(!qrAutoAdvance)}
+                          onClick={() => {
+                            if (!qrAutoAdvance && currentQRIndex >= qrCodeData.length - 1) {
+                              setCurrentQRIndex(0); // Restart from beginning
+                            }
+                            setQrAutoAdvance(!qrAutoAdvance);
+                          }}
                           className={`flex-1 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${qrAutoAdvance ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'}`}
                         >
-                          {qrAutoAdvance ? 'إيقاف مؤقت' : 'تشغيل تلقائي'}
+                          {qrAutoAdvance ? 'إيقاف مؤقت' : currentQRIndex >= qrCodeData.length - 1 ? 'إعادة البث' : 'استئناف'}
                         </button>
                         <button 
                           onClick={() => {
@@ -764,7 +779,11 @@ const Settings: React.FC<SettingsProps> = ({ data, setData }) => {
                       <div className="bg-blue-50 p-3 rounded-xl flex items-start gap-2">
                         <Info className="text-blue-500 shrink-0 mt-0.5" size={14} />
                         <p className="text-[10px] font-bold text-blue-700 leading-relaxed">
-                          يتم تبديل الرموز تلقائياً. وجه كاميرا الهاتف الآخر نحو الشاشة وسيقوم بجمع الأجزاء تلقائياً.
+                          {qrAutoAdvance 
+                            ? 'يتم بث الرموز تلقائياً. وجه كاميرا الهاتف الآخر نحو الشاشة وسيقوم بجمعها.' 
+                            : currentQRIndex >= qrCodeData.length - 1
+                              ? 'انتهى عرض جميع الأجزاء. إذا لم تكتمل المزامنة في الهاتف الآخر، اضغط على "إعادة البث".'
+                              : 'البث متوقف. يمكنك استئنافه أو التنقل يدوياً.'}
                         </p>
                       </div>
                     </div>
